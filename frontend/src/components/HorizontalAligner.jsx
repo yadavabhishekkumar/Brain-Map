@@ -1,30 +1,21 @@
 import { useRef } from 'react';
 import { useViewport } from 'reactflow';
 
-export default function HorizontalAligner({
-  line1,
-  line2,
-  onLine1Change,
-  onLine2Change,
-  onConfirm,
-  onCancel,
-}) {
+export default function HorizontalAligner({ lines, onLineDrag, onConfirm, onCancel }) {
   const { zoom, x: panX } = useViewport();
   const dragRef = useRef(null);
 
   const toScreen = (flowX) => flowX * zoom + panX;
 
-  const startDrag = (line, e) => {
+  const startDrag = (depth, e) => {
     e.stopPropagation();
     e.preventDefault();
-    dragRef.current = { line, startClientX: e.clientX, startFlowX: line === 1 ? line1 : line2 };
+    dragRef.current = { depth, startClientX: e.clientX, startFlowX: lines[depth] };
 
     const onMove = (ev) => {
       if (!dragRef.current) return;
       const dx = (ev.clientX - dragRef.current.startClientX) / zoom;
-      const value = dragRef.current.startFlowX + dx;
-      if (dragRef.current.line === 1) onLine1Change(value);
-      else onLine2Change(value);
+      onLineDrag(dragRef.current.depth, dragRef.current.startFlowX + dx);
     };
     const onUp = () => {
       dragRef.current = null;
@@ -37,22 +28,18 @@ export default function HorizontalAligner({
 
   return (
     <>
-      <div
-        className="align-line align-line-1"
-        style={{ left: toScreen(line1) }}
-        onPointerDown={(e) => startDrag(1, e)}
-      >
-        <span className="align-line-label">1</span>
-      </div>
-      <div
-        className="align-line align-line-2"
-        style={{ left: toScreen(line2) }}
-        onPointerDown={(e) => startDrag(2, e)}
-      >
-        <span className="align-line-label">2</span>
-      </div>
+      {lines.map((x, depth) => (
+        <div
+          key={depth}
+          className="align-line"
+          style={{ left: toScreen(x) }}
+          onPointerDown={(e) => startDrag(depth, e)}
+        >
+          <span className="align-line-label">D{depth}</span>
+        </div>
+      ))}
       <div className="align-controls">
-        <span className="align-controls-title">Horizontal Aligner</span>
+        <span className="align-controls-title">Depth Aligner — drag a line to move that depth</span>
         <button className="btn btn-sm btn-primary" onClick={onConfirm}>
           ✓ Confirm
         </button>
@@ -63,3 +50,4 @@ export default function HorizontalAligner({
     </>
   );
 }
+

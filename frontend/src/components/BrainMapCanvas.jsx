@@ -171,8 +171,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [focusedNodeIds, setFocusedNodeIds] = useState([]);
   const [studyMode, setStudyMode] = useState(false);
   const [alignMode, setAlignMode] = useState(false);
-  const [alignLine1, setAlignLine1] = useState(0);
-  const [alignLine2, setAlignLine2] = useState(300);
+  const [alignLines, setAlignLines] = useState([]);
+  const alignBaselineRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -660,60 +660,61 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, [nodes, setNodes, fitView, editMode, pushUndo]);
 
   const enterAlignMode = useCallback(() => {
-    let minX = Infinity;
-    for (const n of nodes) if (n.position.x < minX) minX = n.position.x;
-    if (minX === Infinity) minX = 0;
-    setAlignLine1(minX);
-    setAlignLine2(minX + 320);
+    alignBaselineRef.current = makeSnapshot();
+    let maxDepth = 0;
+    for (const n of nodes) {
+      const d = (n.data && n.data.depth) || 0;
+      if (d > maxDepth) maxDepth = d;
+    }
+    const lines = [];
+    for (let d = 0; d <= maxDepth; d++) {
+      let minX = Infinity;
+      for (const n of nodes) {
+        if (((n.data && n.data.depth) || 0) === d && n.position.x < minX) minX = n.position.x;
+      }
+      lines[d] = minX === Infinity ? d * 300 : minX;
+    }
+    setAlignLines(lines);
     setPreviewNodeId(null);
     setSelectedNodeId(null);
     setAlignMode(true);
-  }, [nodes]);
+  }, [nodes, makeSnapshot]);
+
+  const moveDepth = useCallback(
+    (depth, newX) => {
+      setAlignLines((ls) => {
+        const next = [...ls];
+        next[depth] = newX;
+        return next;
+      });
+      setNodes((nds) =>
+        nds.map((n) =>
+          ((n.data && n.data.depth) || 0) === depth
+            ? { ...n, position: { ...n.position, x: newX } }
+            : n
+        )
+      );
+    },
+    [setNodes]
+  );
 
   const cancelAlign = useCallback(() => {
+    if (alignBaselineRef.current) {
+      setNodes(alignBaselineRef.current.nodes);
+      setEdges(alignBaselineRef.current.edges);
+    }
+    alignBaselineRef.current = null;
     setAlignMode(false);
-  }, []);
+  }, [setNodes, setEdges]);
 
   const confirmAlign = useCallback(() => {
-    // The node whose left edge is closest to line 1 defines the parent level.
-    let closest = null;
-    let minDist = Infinity;
-    for (const n of nodes) {
-      const d = Math.abs(n.position.x - alignLine1);
-      if (d < minDist) {
-        minDist = d;
-        closest = n;
-      }
+    if (editMode && alignBaselineRef.current) {
+      setUndoStack((s) => [...s, alignBaselineRef.current]);
+      setRedoStack([]);
     }
-    if (!closest) {
-      setAlignMode(false);
-      return;
-    }
-
-    // That node + all its siblings align on line 1.
-    const pid = closest.data && closest.data.parent_id ? closest.data.parent_id : null;
-    const parentSet = new Set();
-    for (const n of nodes) {
-      const np = n.data && n.data.parent_id ? n.data.parent_id : null;
-      if (np === pid) parentSet.add(n.id);
-    }
-
-    // Their children align on line 2 (to the right).
-    const childSet = new Set();
-    for (const n of nodes) {
-      if (n.data && n.data.parent_id && parentSet.has(n.data.parent_id)) childSet.add(n.id);
-    }
-
-    if (editMode) pushUndo();
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (parentSet.has(n.id)) return { ...n, position: { ...n.position, x: alignLine1 } };
-        if (childSet.has(n.id)) return { ...n, position: { ...n.position, x: alignLine2 } };
-        return n;
-      })
-    );
+    alignBaselineRef.current = null;
     setAlignMode(false);
-  }, [nodes, alignLine1, alignLine2, editMode, pushUndo, setNodes]);
+  }, [editMode, setUndoStack, setRedoStack]);
 
   const focusNode = useCallback(
     (id) => {
@@ -906,10 +907,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
           {alignMode && (
             <HorizontalAligner
-              line1={alignLine1}
-              line2={alignLine2}
-              onLine1Change={setAlignLine1}
-              onLine2Change={setAlignLine2}
+              lines={alignLines}
+              onLineDrag={moveDepth}
               onConfirm={confirmAlign}
               onCancel={cancelAlign}
             />
