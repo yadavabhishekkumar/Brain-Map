@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { renderMarkdown } from '../markdown';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -21,8 +21,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [chats, setChats] = useState([]);
   const [showChats, setShowChats] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
-  const [width, setWidth] = useState(360);
-  const resizeRef = useRef({ active: false, startX: 0, startWidth: 360 });
+  const resizeRef = useRef({ active: false, startX: 0, startWidth: width });
 
   const startResize = (e) => {
     e.preventDefault();
@@ -34,7 +33,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     const onMove = (e) => {
       if (!resizeRef.current.active) return;
       const dx = e.clientX - resizeRef.current.startX;
-      setWidth(Math.min(820, Math.max(260, resizeRef.current.startWidth - dx)));
+      onResize(Math.min(820, Math.max(260, resizeRef.current.startWidth - dx)));
     };
     const onUp = () => {
       resizeRef.current.active = false;
@@ -47,7 +46,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
       window.removeEventListener('mouseup', onUp);
       document.body.classList.remove('resizing');
     };
-  }, []);
+  }, [onResize]);
 
   const load = useCallback(async () => {
     try {
@@ -67,6 +66,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   }, [load]);
 
   const save = async () => {
+    if (editMode) return;
     setSaving(true);
     try {
       const payload = { label, content, parent_id: parentId || null };
@@ -79,15 +79,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     }
   };
 
-  const remove = async () => {
+  const remove = () => {
     if (!window.confirm('Delete this node and its entire subtree?')) return;
-    try {
-      await api.deleteNode(nodeId);
-      await onChanged();
-      onClose();
-    } catch (e) {
-      alert(e.message);
-    }
+    onDeleteNode(nodeId);
+    onClose();
   };
 
   const onUpload = async (e) => {
@@ -121,6 +116,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   };
 
   const apply = async (action) => {
+    if (editMode) return;
     setApplying(true);
     try {
       await api.applyAttachment(activeAttachmentId, action, extractedText);
@@ -173,7 +169,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   }, [nodeId]);
 
   const doApply = async (action, mode) => {
-    if (!answer.trim() || applyingAnswer) return;
+    if (editMode || !answer.trim() || applyingAnswer) return;
     setApplyingAnswer(true);
     try {
       await api.applyAIAnswer(nodeId, answer.trim(), action, mode);
@@ -190,6 +186,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
 
   // 'notes' asks for append/override first; child & map apply directly.
   const applyAnswer = (action) => {
+    if (editMode) return;
     if (action === 'notes') {
       setPendingApply('notes');
       return;
@@ -270,12 +267,14 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
         </select>
 
         <div className="panel-actions">
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
+          <button className="btn btn-primary" onClick={save} disabled={saving || editMode}>
             {saving ? 'Saving…' : 'Save'}
           </button>
-          <button className="btn btn-danger" onClick={remove}>
-            Delete
-          </button>
+          {editMode && (
+            <button className="btn btn-danger" onClick={remove}>
+              Delete
+            </button>
+          )}
         </div>
 
         <h4>📎 Notes &amp; screenshots</h4>

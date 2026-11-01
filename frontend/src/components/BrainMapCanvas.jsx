@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap,
-  useReactFlow, useViewport, useNodesState, useEdgesState, MarkerType,
+  useReactFlow, useViewport, useNodesState, useEdgesState, applyNodeChanges, applyEdgeChanges, MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { api } from '../api';
@@ -103,19 +103,24 @@ export default function BrainMapCanvas(props) {
 }
 
 function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes] = useNodesState([]);
+  const [edges, setEdges] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [previewNodeId, setPreviewNodeId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(360);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
   const viewport = useViewport();
   const zoom = viewport.zoom;
   const { setCenter, fitView } = useReactFlow();
   const didFit = useRef(false);
   const clickTimer = useRef(null);
+  const baselineRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -140,6 +145,140 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // In edit mode, ignore React Flow's own removals so deletions are handled
+  // (and made undoable) by our own staged handlers.
+  const handleNodesChange = useCallback(
+    (changes) => {
+      if (editMode) {
+        setNodes((nds) => applyNodeChanges(changes.filter((c) => c.type !== 'remove'), nds));
+      } else {
+        setNodes((nds) => applyNodeChanges(changes, nds));
+      }
+    },
+    [editMode, setNodes]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes) => {
+      if (editMode) {
+        setEdges((eds) => applyEdgeChanges(changes.filter((c) => c.type !== 'remove'), eds));
+      } else {
+        setEdges((eds) => applyEdgeChanges(changes, eds));
+      }
+    },
+    [editMode, setEdges]
+  );
+
+  const makeSnapshot = useCallback(
+    () => ({
+      nodes: nodes.map((n) => ({ ...n, position: { ...n.position }, data: { ...n.data } })),
+      edges: edges.map((e) => ({ ...e })),
+    }),
+    [nodes, edges]
+  );
+
+  const pushUndo = useCallback((entry) => {
+    setUndoStack((s) => [...s, entry]);
+    setRedoStack([]);
+  }, []);
+
+  // Remove ids (and their subtrees) locally; returns the set of removed ids.
+  const stageDelete = useCallback(
+    (ids) => {
+      const subtree = new Set(ids);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const n of nodes) {
+          if (n.data && n.data.parent_id && subtree.has(n.data.parent_id) && !subtree.has(n.id)) {
+            subtree.add(n.id);
+            changed = true;
+          }
+        }
+      }
+      const removedNodes = nodes.filter((n) => subtree.has(n.id));
+      const removedEdges = edges.filter((e) => subtree.has(e.source) || subtree.has(e.target));
+      setNodes((nds) => nds.filter((n) => !subtree.has(n.id)));
+      setEdges((eds) => eds.filter((e) => !subtree.has(e.source) && !subtree.has(e.target)));
+      pushUndo({ nodes: removedNodes, edges: removedEdges });
+      return subtree;
+    },
+    [nodes, edges, setNodes, setEdges, pushUndo]
+  );
+
+  const undo = useCallback(() => {
+    if (!undoStack.length) return;
+    const entry = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    setRedoStack((s) => [...s, entry]);
+    setNodes((nds) => [...nds, ...entry.nodes]);
+    setEdges((eds) => [...eds, ...entry.edges]);
+  }, [undoStack, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    if (!redoStack.length) return;
+    const entry = redoStack[redoStack.length - 1];
+    setRedoStack((s) => s.slice(0, -1));
+    setUndoStack((s) => [...s, entry]);
+    setNodes((nds) => nds.filter((n) => !entry.nodes.some((x) => x.id === n.id)));
+    setEdges((eds) => eds.filter((e) => !entry.edges.some((x) => x.id === e.id)));
+  }, [redoStack, setNodes, setEdges]);
+
+  const enterEditMode = useCallback(() => {
+    baselineRef.current = makeSnapshot();
+    setUndoStack([]);
+    setRedoStack([]);
+    setPreviewNodeId(null);
+    setSelectedNodeId(null);
+    setEditMode(true);
+  }, [makeSnapshot]);
+
+  const exitEditMode = useCallback(() => {
+    setEditMode(false);
+    setUndoStack([]);
+    setRedoStack([]);
+    baselineRef.current = null;
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    const baseline = baselineRef.current;
+    if (!baseline) return;
+    const currIds = new Set(nodes.map((n) => n.id));
+    const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id));
+    const deletedIds = new Set(deletedNodes.map((n) => n.id));
+    const topmost = deletedNodes.filter(
+      (n) => !(n.data && n.data.parent_id) || !deletedIds.has(n.data.parent_id)
+    );
+    for (const n of topmost) {
+      await api.deleteNode(n.id);
+    }
+    const currEdgeIds = new Set(edges.map((e) => e.id));
+    for (const e of baseline.edges) {
+      if (!currEdgeIds.has(e.id)) await api.deleteEdge(e.id);
+    }
+    exitEditMode();
+    setSelectedNodeId(null);
+    await load();
+  }, [nodes, edges, exitEditMode, load]);
+
+  const cancelEdit = useCallback(() => {
+    const baseline = baselineRef.current;
+    if (baseline) {
+      setNodes(baseline.nodes);
+      setEdges(baseline.edges);
+    }
+    exitEditMode();
+  }, [exitEditMode, setNodes, setEdges]);
+
+  const onDeleteNode = useCallback(
+    (nodeId) => {
+      stageDelete([nodeId]);
+      setSelectedNodeId(null);
+      setPreviewNodeId(null);
+    },
+    [stageDelete]
+  );
 
   // parent-child edges (solid, from tree) + cross-links (dashed, from edges table)
   const derivedEdges = useMemo(() => {
@@ -261,14 +400,28 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
   }, []);
 
-  const handleEdgesDelete = useCallback((deleted) => {
-    deleted.forEach((e) => {
-      if (!e.id.startsWith('pc-')) api.deleteEdge(e.id).catch(console.error);
-    });
-  }, []);
+  const handleEdgesDelete = useCallback(
+    (deleted) => {
+      if (editMode) {
+        pushUndo({ nodes: [], edges: deleted });
+        return;
+      }
+      deleted.forEach((e) => {
+        if (!e.id.startsWith('pc-')) api.deleteEdge(e.id).catch(console.error);
+      });
+    },
+    [editMode, pushUndo]
+  );
 
   const handleNodesDelete = useCallback(
     async (deleted) => {
+      if (editMode) {
+        const ids = deleted.map((n) => n.id);
+        const subtree = stageDelete(ids);
+        if (subtree.has(selectedNodeId)) setSelectedNodeId(null);
+        if (subtree.has(previewNodeId)) setPreviewNodeId(null);
+        return;
+      }
       const ids = new Set(deleted.map((n) => n.id));
       const topmost = deleted.filter(
         (n) => !(n.data && n.data.parent_id) || !ids.has(n.data.parent_id)
@@ -277,7 +430,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       if (ids.has(selectedNodeId)) setSelectedNodeId(null);
       await load();
     },
-    [selectedNodeId, load]
+    [editMode, stageDelete, selectedNodeId, previewNodeId, load]
   );
 
   const autoLayoutAndSave = useCallback(async () => {
@@ -295,9 +448,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       setSelectedNodeId(id);
       setPreviewNodeId(null);
       const n = nodes.find((x) => x.id === id);
-      if (n) setCenter(n.position.x, n.position.y, { zoom: 1.6, duration: 800 });
+      if (n) {
+        const sx = n.position.x * zoom + viewport.x;
+        const available = window.innerWidth - sx - 60;
+        setPanelWidth(Math.max(280, Math.min(520, available)));
+        setCenter(n.position.x, n.position.y, { zoom: 1.6, duration: 800 });
+      }
     },
-    [nodes, setCenter]
+    [nodes, setCenter, zoom, viewport.x]
   );
 
   const closePanels = useCallback(() => {
@@ -316,19 +474,45 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, []);
 
   // Double click -> editable side panel.
-  const handleNodeDoubleClick = useCallback((e, node) => {
-    clearTimeout(clickTimer.current);
-    setPreviewNodeId(null);
-    setSelectedNodeId(node.id);
-  }, []);
+  const handleNodeDoubleClick = useCallback(
+    (e, node) => {
+      clearTimeout(clickTimer.current);
+      setPreviewNodeId(null);
+      setSelectedNodeId(node.id);
+      // Default panel width depends on where the node sits on screen.
+      const sx = node.position.x * zoom + viewport.x;
+      const available = window.innerWidth - sx - 60;
+      setPanelWidth(Math.max(280, Math.min(520, available)));
+    },
+    [zoom, viewport.x]
+  );
 
   useEffect(() => {
     const onKey = (e) => {
+      const target = e.target;
+      const isTyping =
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (editMode && !isTyping) {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (editMode && !isTyping) {
+          e.preventDefault();
+          redo();
+        }
+        return;
+      }
       if (e.key === 'Escape') closePanels();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [closePanels]);
+  }, [editMode, undo, redo, closePanels]);
 
   const previewNode = nodes.find((n) => n.id === previewNodeId) || null;
   let previewStyle = null;
@@ -349,21 +533,43 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         </button>
         <div className="canvas-title">{canvasName}</div>
         <div className="topbar-actions">
-          <button className="btn" onClick={() => setSearchOpen((o) => !o)}>
-            🔍 Search
-          </button>
-          <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
-            Fit view
-          </button>
-          <button className="btn" onClick={autoLayoutAndSave}>
-            Auto layout
-          </button>
-          <button className="btn" onClick={() => setLinkModalOpen(true)}>
-            🔗 Link canvas
-          </button>
-          <button className="btn" onClick={() => setAiPanelOpen((o) => !o)}>
-            🤖 AI
-          </button>
+          {!editMode ? (
+            <>
+              <button className="btn" onClick={() => setSearchOpen((o) => !o)}>
+                🔍 Search
+              </button>
+              <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
+                Fit view
+              </button>
+              <button className="btn" onClick={autoLayoutAndSave}>
+                Auto layout
+              </button>
+              <button className="btn" onClick={() => setLinkModalOpen(true)}>
+                🔗 Link canvas
+              </button>
+              <button className="btn" onClick={() => setAiPanelOpen((o) => !o)}>
+                🤖 AI
+              </button>
+              <button className="btn btn-edit" onClick={enterEditMode}>
+                ✏️ Edit
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn" onClick={undo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">
+                ↶ Undo
+              </button>
+              <button className="btn" onClick={redo} disabled={!redoStack.length} title="Redo (Ctrl+A)">
+                ↷ Redo
+              </button>
+              <button className="btn btn-primary" onClick={saveEdit}>
+                💾 Save
+              </button>
+              <button className="btn" onClick={cancelEdit}>
+                ✖ Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -373,8 +579,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             nodes={visible.nodes}
             edges={visible.edges}
             nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}
@@ -385,7 +591,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             minZoom={0.2}
             maxZoom={2.5}
             defaultEdgeOptions={{ type: 'smoothstep' }}
-            deleteKeyCode={['Backspace', 'Delete']}
+            deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
+            nodesDraggable={!editMode}
+            nodesConnectable={!editMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#cbd5e1" />
             <Controls />
@@ -398,16 +606,24 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           </ReactFlow>
 
           <div className="canvas-toolbar">
-            <button className="btn btn-primary" onClick={addChild}>
-              ＋ Child
-            </button>
-            <button className="btn" onClick={addSibling}>
-              ＋ Sibling
-            </button>
-            <button className="btn" onClick={addRoot}>
-              ＋ Root
-            </button>
-            <span className="toolbar-hint">Drag between nodes to connect topics</span>
+            {!editMode ? (
+              <>
+                <button className="btn btn-primary" onClick={addChild}>
+                  ＋ Child
+                </button>
+                <button className="btn" onClick={addSibling}>
+                  ＋ Sibling
+                </button>
+                <button className="btn" onClick={addRoot}>
+                  ＋ Root
+                </button>
+                <span className="toolbar-hint">Drag between nodes to connect topics</span>
+              </>
+            ) : (
+              <span className="toolbar-hint edit-hint">
+                ✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.
+              </span>
+            )}
           </div>
 
           {searchOpen && (
@@ -446,9 +662,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           <NodeEditor
             nodeId={selectedNodeId}
             nodes={nodes}
-            onChanged={load}
+            onChanged={editMode ? () => {} : load}
             onClose={closePanels}
             onOpenCanvas={onOpenCanvas}
+            editMode={editMode}
+            onDeleteNode={onDeleteNode}
+            width={panelWidth}
+            onResize={setPanelWidth}
           />
         )}
       </div>

@@ -890,3 +890,20 @@ mark {
   margin-top: 3px;
 }
 
+/* ---------- Edit mode ---------- */
+.btn-edit {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.btn-edit:hover {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+
+.edit-hint {
+  color: #c2410c;
+  font-weight: 600;
+}
+
