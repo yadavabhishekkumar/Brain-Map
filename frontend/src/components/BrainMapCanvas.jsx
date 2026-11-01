@@ -345,7 +345,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       const b = baseMap.get(n.id);
       const oldParent = (b.data && b.data.parent_id) || null;
       const newParent = (n.data && n.data.parent_id) || null;
-      if (oldParent !== newParent) await api.updateNode(n.id, { parent_id: newParent });
+      const moved = b.position.x !== n.position.x || b.position.y !== n.position.y;
+      const payload = {};
+      if (oldParent !== newParent) payload.parent_id = newParent;
+      if (moved) {
+        payload.x = n.position.x;
+        payload.y = n.position.y;
+      }
+      if (Object.keys(payload).length) await api.updateNode(n.id, payload);
     }
 
     // 4. Deleted cross-link edges
@@ -536,6 +543,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [addFocus, fitView]
   );
 
+  const handleNodeDragStart = useCallback(() => {
+    if (editMode) pushUndo();
+  }, [editMode, pushUndo]);
+
   const handleNodeDragStop = useCallback(
     (event, node) => {
       if (focusMode) {
@@ -549,9 +560,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           return;
         }
       }
+      if (editMode) return; // staged move — position already updated locally
       api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
     },
-    [focusMode, addFocus, load, fitView]
+    [focusMode, editMode, addFocus, load, fitView]
   );
 
   const handleEdgesDelete = useCallback(
@@ -757,6 +769,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onNodeDoubleClick={handleNodeDoubleClick}
             onNodeMouseEnter={(e, node) => setHoveredNodeId(node.id)}
             onNodeMouseLeave={() => setHoveredNodeId(null)}
+            onNodeDragStart={handleNodeDragStart}
             onNodeDragStop={handleNodeDragStop}
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
@@ -765,7 +778,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             maxZoom={2.5}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!editMode}
+            nodesDraggable={!studyMode}
             nodesConnectable={!editMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
