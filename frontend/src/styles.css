@@ -941,3 +941,30 @@ mark {
   box-shadow: var(--shadow);
 }
 
+/* ---------- Focus Mode drop zone ---------- */
+.pin-zone {
+  position: absolute;
+  top: 25%;
+  left: 72%;
+  right: 16px;
+  height: 50%;
+  border: 2px dashed #f59e0b;
+  border-radius: 14px;
+  background: rgba(255, 251, 235, 0.35);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #b45309;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  z-index: 4;
+}
+
+.pin-zone-icon {
+  font-size: 22px;
+}
+

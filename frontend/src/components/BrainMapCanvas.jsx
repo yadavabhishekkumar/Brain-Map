@@ -425,15 +425,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   );
 
   const handleNodeDragStop = useCallback(
-    (e, node) => {
+    (event, node) => {
       if (focusMode) {
-        // "Pin": drag a node to the far-right centre to focus on it.
-        const sx = node.position.x * zoom + viewport.x;
-        const sy = node.position.y * zoom + viewport.y;
+        // "Pin": drop a node inside the right-centre drop zone to focus on it.
+        // Use the pointer position (auto-panning keeps the node under the cursor).
+        const cx = event.clientX;
+        const cy = event.clientY;
         const inPinZone =
-          sx > window.innerWidth * 0.72 &&
-          sy > window.innerHeight * 0.25 &&
-          sy < window.innerHeight * 0.75;
+          cx > window.innerWidth * 0.72 &&
+          cy > window.innerHeight * 0.25 &&
+          cy < window.innerHeight * 0.75;
         if (inPinZone) {
           setFocusedNodeId(node.id);
           load().finally(() => {
@@ -444,7 +445,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       }
       api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
     },
-    [focusMode, zoom, viewport.x, viewport.y, load, fitView]
+    [focusMode, load, fitView]
   );
 
   const handleEdgesDelete = useCallback(
@@ -674,6 +675,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               maskColor="rgba(241,245,249,0.7)"
             />
           </ReactFlow>
+
+          {focusMode && !studyMode && (
+            <div className="pin-zone">
+              <span className="pin-zone-icon">🎯</span>
+              <span>Drag a node here to focus</span>
+            </div>
+          )}
 
           {!studyMode && (
             <div className="canvas-toolbar">
