@@ -76,8 +76,10 @@ async function chatCompletion(messages, options = {}) {
     messages,
     max_tokens: options.maxTokens || 2000,
   };
-  // deepseek-reasoner does not accept a temperature parameter
-  if (model !== 'deepseek-reasoner') {
+  // DeepSeek V4 models accept an "effort" level (low / high / max).
+  if (options.effort) payload.effort = options.effort;
+  // Older models accept temperature; deepseek-reasoner does not.
+  if (!options.effort && model !== 'deepseek-reasoner') {
     payload.temperature = options.temperature !== undefined ? options.temperature : 0.2;
   }
   if (options.json) payload.response_format = { type: 'json_object' };

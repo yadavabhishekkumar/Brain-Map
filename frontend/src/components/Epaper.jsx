@@ -16,8 +16,8 @@ export default function Epaper({ onBack, onOpenCanvas }) {
   const [prompt, setPrompt] = useState(
     'Summarize the key points of this e-paper relevant to the UPSC syllabus, and list important facts, data, and potential exam questions.'
   );
-  const [model, setModel] = useState('deepseek-chat');
-  const [temperature, setTemperature] = useState(0.3);
+  const [model, setModel] = useState('deepseek-v4-pro');
+  const [effort, setEffort] = useState('high');
   const [analyzeBusy, setAnalyzeBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
@@ -99,7 +99,7 @@ export default function Epaper({ onBack, onOpenCanvas }) {
       else fd.append('filePath', lastDownload.filePath);
       fd.append('prompt', prompt.trim());
       fd.append('model', model);
-      fd.append('temperature', String(temperature));
+      fd.append('effort', effort);
       setAnalysis(await api.analyzeEpaper(fd));
     } catch (e) {
       setAnalyzeError(e.message);
@@ -219,24 +219,17 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           <div className="epaper-control">
             <label>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}>
-              <option value="deepseek-chat">DeepSeek Chat (V3)</option>
-              <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+              <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+              <option value="deepseek-flash">DeepSeek V4.1 Flash</option>
             </select>
           </div>
-          <div className="epaper-control epaper-control-wide">
-            <label>Thinking level (temperature): {temperature}</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setTemperature(Number(e.target.value))}
-              disabled={model === 'deepseek-reasoner'}
-            />
-            <span className="muted">
-              {model === 'deepseek-reasoner' ? 'Temperature is not used by DeepSeek Reasoner' : '0 = precise, 1 = creative'}
-            </span>
+          <div className="epaper-control">
+            <label>Thinking level</label>
+            <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+              <option value="low">Low (fast)</option>
+              <option value="high">High (balanced)</option>
+              <option value="max">Max (deepest)</option>
+            </select>
           </div>
         </div>
 
