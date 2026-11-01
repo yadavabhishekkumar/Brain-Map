@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
-function MindMapNode({ data, selected }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted } = data;
+function MindMapNode({ data, selected, id }) {
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, editMode, onAction } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -38,8 +38,60 @@ function MindMapNode({ data, selected }) {
         )}
       </div>
       <Handle type="source" position={Position.Right} className="mind-handle" />
+
+      {editMode && (
+        <>
+          <button
+            className="node-action node-action-right"
+            title="Add child"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(id, 'child');
+            }}
+          >
+            +
+          </button>
+          <button
+            className="node-action node-action-top"
+            title="Add sibling above"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(id, 'sibling-top');
+            }}
+          >
+            +
+          </button>
+          <button
+            className="node-action node-action-bottom"
+            title="Add sibling below"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(id, 'sibling-bottom');
+            }}
+          >
+            +
+          </button>
+          {!isRoot && (
+            <button
+              className="node-action node-action-left node-action-minus"
+              title="Detach from parent"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAction(id, 'detach');
+              }}
+            >
+              −
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 export default memo(MindMapNode);
+

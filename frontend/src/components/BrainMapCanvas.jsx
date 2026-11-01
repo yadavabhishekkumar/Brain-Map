@@ -123,6 +123,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const didFit = useRef(false);
   const clickTimer = useRef(null);
   const baselineRef = useRef(null);
+  const tempIdRef = useRef(0);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [focusMode, setFocusMode] = useState(false);
   const [focusedNodeIds, setFocusedNodeIds] = useState([]);
@@ -184,10 +185,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [nodes, edges]
   );
 
-  const pushUndo = useCallback((entry) => {
-    setUndoStack((s) => [...s, entry]);
+  const pushUndo = useCallback(() => {
+    setUndoStack((s) => [...s, makeSnapshot()]);
     setRedoStack([]);
-  }, []);
+  }, [makeSnapshot]);
 
   // Remove ids (and their subtrees) locally; returns the set of removed ids.
   const stageDelete = useCallback(
@@ -203,11 +204,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           }
         }
       }
-      const removedNodes = nodes.filter((n) => subtree.has(n.id));
-      const removedEdges = edges.filter((e) => subtree.has(e.source) || subtree.has(e.target));
+      pushUndo();
       setNodes((nds) => nds.filter((n) => !subtree.has(n.id)));
       setEdges((eds) => eds.filter((e) => !subtree.has(e.source) && !subtree.has(e.target)));
-      pushUndo({ nodes: removedNodes, edges: removedEdges });
       return subtree;
     },
     [nodes, edges, setNodes, setEdges, pushUndo]
@@ -215,21 +214,80 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   const undo = useCallback(() => {
     if (!undoStack.length) return;
-    const entry = undoStack[undoStack.length - 1];
+    const prev = undoStack[undoStack.length - 1];
     setUndoStack((s) => s.slice(0, -1));
-    setRedoStack((s) => [...s, entry]);
-    setNodes((nds) => [...nds, ...entry.nodes]);
-    setEdges((eds) => [...eds, ...entry.edges]);
-  }, [undoStack, setNodes, setEdges]);
+    setRedoStack((s) => [...s, makeSnapshot()]);
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+  }, [undoStack, makeSnapshot, setNodes, setEdges]);
 
   const redo = useCallback(() => {
     if (!redoStack.length) return;
-    const entry = redoStack[redoStack.length - 1];
+    const next = redoStack[redoStack.length - 1];
     setRedoStack((s) => s.slice(0, -1));
-    setUndoStack((s) => [...s, entry]);
-    setNodes((nds) => nds.filter((n) => !entry.nodes.some((x) => x.id === n.id)));
-    setEdges((eds) => eds.filter((e) => !entry.edges.some((x) => x.id === e.id)));
-  }, [redoStack, setNodes, setEdges]);
+    setUndoStack((s) => [...s, makeSnapshot()]);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [redoStack, makeSnapshot, setNodes, setEdges]);
+
+  // Add a locally-created node (undoable) during edit mode.
+  const stageAddNode = useCallback(
+    (newNode) => {
+      pushUndo();
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [pushUndo, setNodes]
+  );
+
+  // Detach a node from its parent (make it a root) — undoable.
+  const stageDetach = useCallback(
+    (nodeId) => {
+      pushUndo();
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, parent_id: null, depth: 0, isRoot: true } } : n
+        )
+      );
+    },
+    [pushUndo, setNodes]
+  );
+
+  const onNodeAction = useCallback(
+    (nodeId, action) => {
+      if (!editMode) return;
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const parentDepth = (node.data && node.data.depth) || 0;
+
+      const temp = (parentId, depth, x, y) => ({
+        id: `tmp-${++tempIdRef.current}`,
+        type: 'mindmap',
+        position: { x, y },
+        data: {
+          label: 'New topic',
+          content: '',
+          depth,
+          isRoot: !parentId,
+          parent_id: parentId,
+          attachmentCount: 0,
+          linked_canvas_id: null,
+          linked_canvas_name: '',
+        },
+      });
+
+      if (action === 'child') {
+        const childCount = nodes.filter((n) => n.data && n.data.parent_id === nodeId).length;
+        stageAddNode(temp(nodeId, parentDepth + 1, node.position.x + 260, node.position.y + childCount * 90));
+      } else if (action === 'sibling-top' || action === 'sibling-bottom') {
+        const parentId = (node.data && node.data.parent_id) || null;
+        const y = action === 'sibling-top' ? node.position.y - 90 : node.position.y + 90;
+        stageAddNode(temp(parentId, parentDepth, node.position.x, y));
+      } else if (action === 'detach') {
+        stageDetach(nodeId);
+      }
+    },
+    [editMode, nodes, stageAddNode, stageDetach]
+  );
 
   const enterEditMode = useCallback(() => {
     baselineRef.current = makeSnapshot();
@@ -250,23 +308,56 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const saveEdit = useCallback(async () => {
     const baseline = baselineRef.current;
     if (!baseline) return;
+    const baseIds = new Set(baseline.nodes.map((n) => n.id));
     const currIds = new Set(nodes.map((n) => n.id));
+
+    // 1. Deleted nodes (topmost only; cascade handles descendants)
     const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id));
     const deletedIds = new Set(deletedNodes.map((n) => n.id));
     const topmost = deletedNodes.filter(
       (n) => !(n.data && n.data.parent_id) || !deletedIds.has(n.data.parent_id)
     );
-    for (const n of topmost) {
-      await api.deleteNode(n.id);
+    for (const n of topmost) await api.deleteNode(n.id);
+
+    // 2. Added nodes (temp ids -> create, parents first)
+    const added = nodes.filter((n) => !baseIds.has(n.id));
+    const idMap = new Map();
+    const sortedAdded = [...added].sort(
+      (a, b) => ((a.data && a.data.depth) || 0) - ((b.data && b.data.depth) || 0)
+    );
+    for (const n of sortedAdded) {
+      const parentTemp = n.data && n.data.parent_id;
+      const parentReal = parentTemp && idMap.has(parentTemp) ? idMap.get(parentTemp) : parentTemp || null;
+      const created = await api.createNode(canvasId, {
+        label: n.data.label,
+        content: n.data.content || '',
+        parent_id: parentReal,
+        x: n.position.x,
+        y: n.position.y,
+      });
+      idMap.set(n.id, created.id);
     }
+
+    // 3. Detached nodes (parent changed)
+    const baseMap = new Map(baseline.nodes.map((n) => [n.id, n]));
+    for (const n of nodes) {
+      if (!baseIds.has(n.id)) continue;
+      const b = baseMap.get(n.id);
+      const oldParent = (b.data && b.data.parent_id) || null;
+      const newParent = (n.data && n.data.parent_id) || null;
+      if (oldParent !== newParent) await api.updateNode(n.id, { parent_id: newParent });
+    }
+
+    // 4. Deleted cross-link edges
     const currEdgeIds = new Set(edges.map((e) => e.id));
     for (const e of baseline.edges) {
       if (!currEdgeIds.has(e.id)) await api.deleteEdge(e.id);
     }
+
     exitEditMode();
     setSelectedNodeId(null);
     await load();
-  }, [nodes, edges, exitEditMode, load]);
+  }, [nodes, edges, canvasId, exitEditMode, load]);
 
   const cancelEdit = useCallback(() => {
     const baseline = baselineRef.current;
@@ -350,12 +441,12 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         ...n,
         hidden: op <= 0.03 || focusHidden,
         style: { ...n.style, opacity: Math.max(op, 0), transition: 'opacity 200ms ease' },
-        data: { ...n.data, scale, highlighted: hoveredChildIds.has(n.id) },
+        data: { ...n.data, scale, highlighted: hoveredChildIds.has(n.id), editMode, onAction: onNodeAction },
       };
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds, editMode, onNodeAction]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -466,14 +557,15 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const handleEdgesDelete = useCallback(
     (deleted) => {
       if (editMode) {
-        pushUndo({ nodes: [], edges: deleted });
+        pushUndo();
+        setEdges((eds) => eds.filter((e) => !deleted.some((d) => d.id === e.id)));
         return;
       }
       deleted.forEach((e) => {
         if (!e.id.startsWith('pc-')) api.deleteEdge(e.id).catch(console.error);
       });
     },
-    [editMode, pushUndo]
+    [editMode, pushUndo, setEdges]
   );
 
   const handleNodesDelete = useCallback(
