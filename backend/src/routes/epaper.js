@@ -214,7 +214,7 @@ router.post('/analyze', upload.single('file'), async (req, res, next) => {
       return res.status(422).json({ error: 'Could not extract text from this PDF (it may be image-only).' });
     }
     // Keep within DeepSeek's context window.
-    const MAX_CHARS = 50000;
+    const MAX_CHARS = 100000;
     const excerpt = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
 
     const messages = [
@@ -230,7 +230,7 @@ router.post('/analyze', upload.single('file'), async (req, res, next) => {
     const result = await ai.chatCompletion(messages, {
       model: model || 'deepseek-chat',
       temperature: temperature !== undefined ? Number(temperature) : 0.3,
-      maxTokens: 4000,
+      maxTokens: 8000,
     });
 
     res.json({

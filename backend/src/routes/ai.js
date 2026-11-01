@@ -333,4 +333,78 @@ router.post('/apply', async (req, res, next) => {
   }
 });
 
+// Import plain/markdown text into a new (or existing) canvas as a tree of nodes.
+router.post('/import-text', async (req, res, next) => {
+  try {
+    const { text, canvas_name, node_id } = req.body || {};
+    if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
+
+    let canvasId;
+    let attachParentId;
+    let attachX = 0;
+    let attachY = 0;
+    let attachDepth = 0;
+
+    if (node_id) {
+      const n = await pool.query('SELECT * FROM nodes WHERE id=$1', [node_id]);
+      if (!n.rows[0]) return res.status(404).json({ error: 'Node not found' });
+      canvasId = n.rows[0].canvas_id;
+      attachParentId = node_id;
+      attachX = n.rows[0].x;
+      attachY = n.rows[0].y;
+      attachDepth = n.rows[0].depth;
+    } else {
+      const name = (canvas_name || 'E-Paper Analysis').trim() || 'E-Paper Analysis';
+      canvasId = uuid();
+      await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+        canvasId,
+        name,
+        '',
+      ]);
+      const rootId = uuid();
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, label, content, x, y, depth) VALUES ($1,$2,$3,'',0,0,0)`,
+        [rootId, canvasId, name]
+      );
+      await indexNode(rootId);
+      attachParentId = rootId;
+      attachX = 0;
+      attachY = 0;
+      attachDepth = 0;
+    }
+
+    const parsed = parseExtractedText(text);
+    if (!parsed.length) return res.status(400).json({ error: 'Could not parse the text into topics.' });
+
+    const flat = parsedToFlat(parsed);
+    const positions = computePositions(flat);
+    const idByIndex = [];
+    for (let i = 0; i < flat.length; i++) {
+      const item = flat[i];
+      const parentId = item.parentRef >= 0 ? idByIndex[item.parentRef] : attachParentId;
+      const id = uuid();
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
+         VALUES ($1,$2,$3,$4,'',$5,$6,$7)`,
+        [
+          id,
+          canvasId,
+          parentId,
+          item.label,
+          attachX + 260 + positions[i].x,
+          attachY + positions[i].y,
+          attachDepth + 1 + item.depth,
+        ]
+      );
+      idByIndex[i] = id;
+      await indexNode(id);
+    }
+    await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [canvasId]);
+
+    res.json({ canvas_id: canvasId, created_count: flat.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;

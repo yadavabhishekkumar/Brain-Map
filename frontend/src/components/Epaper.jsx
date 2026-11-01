@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../api';
 
-export default function Epaper({ onBack }) {
+export default function Epaper({ onBack, onOpenCanvas }) {
   const [date, setDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [folder, setFolder] = useState('');
@@ -22,6 +22,8 @@ export default function Epaper({ onBack }) {
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
   const fileInputRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
 
   const download = async () => {
     if (!date) {
@@ -103,6 +105,22 @@ export default function Epaper({ onBack }) {
       setAnalyzeError(e.message);
     } finally {
       setAnalyzeBusy(false);
+    }
+  };
+
+  const exportToCanvas = async () => {
+    if (!analysis || !analysis.analysis) return;
+    setExporting(true);
+    setExportMsg('');
+    try {
+      const name = `E-Paper Analysis${date ? ' - ' + date : ''}`;
+      const r = await api.importTextToCanvas(analysis.analysis, name);
+      setExportMsg(`Exported ${r.created_count} topics to a new canvas.`);
+      onOpenCanvas(r.canvas_id, name);
+    } catch (e) {
+      setAnalyzeError(e.message);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -233,6 +251,10 @@ export default function Epaper({ onBack }) {
               Extracted {analysis.extractedLength} characters{analysis.truncated ? ' (truncated for context)' : ''}
             </div>
             <div className="epaper-analysis-body">{analysis.analysis}</div>
+            <button className="btn" onClick={exportToCanvas} disabled={exporting}>
+              {exporting ? 'Exporting…' : '📤 Export to canvas'}
+            </button>
+            {exportMsg && <div className="epaper-login-msg">{exportMsg}</div>}
           </div>
         )}
       </div>

@@ -18,7 +18,12 @@ export default function App() {
   }
 
   if (view.type === 'epaper') {
-    return <Epaper onBack={() => setView({ type: 'list' })} />;
+    return (
+      <Epaper
+        onBack={() => setView({ type: 'list' })}
+        onOpenCanvas={(id, name) => setView({ type: 'canvas', id, name })}
+      />
+    );
   }
 
   return (
