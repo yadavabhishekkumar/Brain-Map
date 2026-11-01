@@ -406,6 +406,15 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return set;
   }, [focusMode, focusedNodeIds, nodes]);
 
+  // Depth of the focused node — makes progressive disclosure relative to the
+  // focus, so the focused node is always treated as depth 0.
+  const focusBaseDepth = useMemo(() => {
+    if (!focusMode || focusedNodeIds.length === 0) return 0;
+    const lastId = focusedNodeIds[focusedNodeIds.length - 1];
+    const last = nodes.find((n) => n.id === lastId);
+    return (last && last.data && last.data.depth) || 0;
+  }, [focusMode, focusedNodeIds, nodes]);
+
   // Immediate children of the hovered node (highlighted).
   const hoveredChildIds = useMemo(() => {
     if (!hoveredNodeId) return new Set();
@@ -418,7 +427,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const scale = nodeScale(zoom);
     const hidden = new Set();
     const vnodes = nodes.map((n) => {
-      const d = (n.data && n.data.depth) || 0;
+      const rawDepth = (n.data && n.data.depth) || 0;
+      const d = focusedSubtreeIds ? Math.max(0, rawDepth - focusBaseDepth) : rawDepth;
       const op = nodeOpacity(d, threshold);
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       if (op <= 0.03 || focusHidden) hidden.add(n.id);
@@ -431,7 +441,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds, editMode, onNodeAction]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, onNodeAction]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
