@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../api';
 
 export default function Epaper({ onBack }) {
@@ -10,6 +10,18 @@ export default function Epaper({ onBack }) {
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginMsg, setLoginMsg] = useState('');
+  const [lastDownload, setLastDownload] = useState(null);
+  const [pickedFile, setPickedFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [prompt, setPrompt] = useState(
+    'Summarize the key points of this e-paper relevant to the UPSC syllabus, and list important facts, data, and potential exam questions.'
+  );
+  const [model, setModel] = useState('deepseek-chat');
+  const [temperature, setTemperature] = useState(0.3);
+  const [analyzeBusy, setAnalyzeBusy] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzeError, setAnalyzeError] = useState('');
+  const fileInputRef = useRef(null);
 
   const download = async () => {
     if (!date) {
@@ -28,7 +40,11 @@ export default function Epaper({ onBack }) {
         payload.date = date;
       }
       if (folder.trim()) payload.folder = folder.trim();
-      setResult(await api.downloadEpaper(payload));
+      const r = await api.downloadEpaper(payload);
+      setResult(r);
+      if (r && r.downloaded && r.downloaded.length > 0) {
+        setLastDownload(r.downloaded[r.downloaded.length - 1]);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -47,6 +63,46 @@ export default function Epaper({ onBack }) {
       setError(e.message);
     } finally {
       setLoggingIn(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) setPickedFile({ name: f.name, file: f });
+  };
+
+  const onPick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) setPickedFile({ name: f.name, file: f });
+    e.target.value = '';
+  };
+
+  const analyze = async () => {
+    if (!prompt.trim()) {
+      setAnalyzeError('Please enter a prompt.');
+      return;
+    }
+    if (!pickedFile && !lastDownload) {
+      setAnalyzeError('Drop a PDF, pick one, or download one first.');
+      return;
+    }
+    setAnalyzeBusy(true);
+    setAnalyzeError('');
+    setAnalysis(null);
+    try {
+      const fd = new FormData();
+      if (pickedFile) fd.append('file', pickedFile.file);
+      else fd.append('filePath', lastDownload.filePath);
+      fd.append('prompt', prompt.trim());
+      fd.append('model', model);
+      fd.append('temperature', String(temperature));
+      setAnalysis(await api.analyzeEpaper(fd));
+    } catch (e) {
+      setAnalyzeError(e.message);
+    } finally {
+      setAnalyzeBusy(false);
     }
   };
 
@@ -109,6 +165,77 @@ export default function Epaper({ onBack }) {
           ))}
         </div>
       )}
+
+      <div className="epaper-section">
+        <h2>🔍 Step 2 — Analyze with AI</h2>
+        <p className="muted">
+          Drag &amp; drop a PDF (or use the last downloaded one), set your prompt and model, then analyze.
+        </p>
+
+        <div
+          className={`epaper-drop${dragOver ? ' drag-over' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+        >
+          {pickedFile ? (
+            <span>📄 {pickedFile.name}</span>
+          ) : lastDownload ? (
+            <span>
+              📄 Using last download: <strong>{lastDownload.filename}</strong> (click to change)
+            </span>
+          ) : (
+            <span>Drop a PDF here, or click to browse</span>
+          )}
+          <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={onPick} />
+        </div>
+
+        <label>Prompt</label>
+        <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+
+        <div className="epaper-analyze-controls">
+          <div className="epaper-control">
+            <label>Model</label>
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="deepseek-chat">DeepSeek Chat (V3)</option>
+              <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+            </select>
+          </div>
+          <div className="epaper-control epaper-control-wide">
+            <label>Thinking level (temperature): {temperature}</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              disabled={model === 'deepseek-reasoner'}
+            />
+            <span className="muted">
+              {model === 'deepseek-reasoner' ? 'Temperature is not used by DeepSeek Reasoner' : '0 = precise, 1 = creative'}
+            </span>
+          </div>
+        </div>
+
+        <button className="btn btn-primary" onClick={analyze} disabled={analyzeBusy}>
+          {analyzeBusy ? 'Analyzing…' : '🤖 Analyze'}
+        </button>
+
+        {analyzeError && <div className="epaper-error">⚠ {analyzeError}</div>}
+        {analysis && (
+          <div className="epaper-analysis">
+            <div className="epaper-analysis-meta">
+              Extracted {analysis.extractedLength} characters{analysis.truncated ? ' (truncated for context)' : ''}
+            </div>
+            <div className="epaper-analysis-body">{analysis.analysis}</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

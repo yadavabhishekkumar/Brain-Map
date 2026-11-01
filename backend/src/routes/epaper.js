@@ -4,8 +4,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright-core');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const ai = require('../ai');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const BASE = 'https://epaper.thehindu.com/ccidist-ws/th/th_international';
 const HEADERS = {
@@ -40,6 +44,11 @@ async function ensureLoginClosed() {
 
 function isPdf(buf) {
   return buf && buf.length > 4 && buf.slice(0, 5).toString('ascii').startsWith('%PDF');
+}
+
+async function extractPdfText(buffer) {
+  const data = await pdfParse(buffer);
+  return (data && data.text ? data.text : '').replace(/\r\n/g, '\n').trim();
 }
 
 async function downloadPdf(issue, folder) {
@@ -180,6 +189,56 @@ router.post('/download', async (req, res, next) => {
     }
 
     res.json({ ok: true, folder: targetFolder, downloaded, skipped });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Parse a PDF (upload or file path) and analyze its text with DeepSeek.
+router.post('/analyze', upload.single('file'), async (req, res, next) => {
+  try {
+    const { prompt, model, temperature, filePath } = req.body || {};
+    if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
+
+    let buffer;
+    if (req.file) {
+      buffer = req.file.buffer;
+    } else if (filePath) {
+      buffer = fs.readFileSync(filePath);
+    } else {
+      return res.status(400).json({ error: 'Provide a PDF file or a filePath' });
+    }
+
+    const text = await extractPdfText(buffer);
+    if (!text) {
+      return res.status(422).json({ error: 'Could not extract text from this PDF (it may be image-only).' });
+    }
+    // Keep within DeepSeek's context window.
+    const MAX_CHARS = 50000;
+    const excerpt = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          'You are a UPSC exam preparation assistant. Analyze the provided e-paper text according to the user prompt. ' +
+          'Base your answer only on the provided text and present it clearly.',
+      },
+      { role: 'user', content: `E-paper content:\n\n${excerpt}\n\n---\n\n${prompt.trim()}` },
+    ];
+
+    const result = await ai.chatCompletion(messages, {
+      model: model || 'deepseek-chat',
+      temperature: temperature !== undefined ? Number(temperature) : 0.3,
+      maxTokens: 4000,
+    });
+
+    res.json({
+      analysis: result.content,
+      extractedLength: text.length,
+      truncated: text.length > MAX_CHARS,
+      preview: text.slice(0, 800),
+    });
   } catch (e) {
     next(e);
   }

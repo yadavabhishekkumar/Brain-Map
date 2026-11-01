@@ -69,13 +69,17 @@ async function chatCompletion(messages, options = {}) {
   if (!key) {
     throw new Error('No DEEPSEEK_API_KEY configured. Add it to backend/.env (DEEPSEEK_API_KEY=...)');
   }
+  const model = options.model || config.deepseek.model;
   const url = `${config.deepseek.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const payload = {
-    model: config.deepseek.model,
+    model,
     messages,
     max_tokens: options.maxTokens || 2000,
-    temperature: options.temperature !== undefined ? options.temperature : 0.2,
   };
+  // deepseek-reasoner does not accept a temperature parameter
+  if (model !== 'deepseek-reasoner') {
+    payload.temperature = options.temperature !== undefined ? options.temperature : 0.2;
+  }
   if (options.json) payload.response_format = { type: 'json_object' };
 
   const resp = await axios.post(url, payload, {

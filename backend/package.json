@@ -17,6 +17,7 @@
     "multer": "^2.0.1",
     "pg": "^8.11.5",
     "playwright-core": "1.40.0",
+    "pdf-parse": "1.1.1",
     "tesseract.js": "^4.1.4"
   }
 }

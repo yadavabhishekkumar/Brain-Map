@@ -69,6 +69,8 @@ export const api = {
   downloadEpaper: (payload) => request('/epaper/download', { method: 'POST', body: JSON.stringify(payload) }),
 
   epaperLogin: () => request('/epaper/login', { method: 'POST', body: JSON.stringify({}) }),
+
+  analyzeEpaper: (formData) => request('/epaper/analyze', { method: 'POST', body: formData }),
 };
 
 export const fileUrl = (id) => `${API_BASE}/attachments/${id}/file`;
