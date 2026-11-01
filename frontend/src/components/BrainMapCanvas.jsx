@@ -13,6 +13,7 @@ import AIBuildPanel from './AIBuildPanel';
 import NodePreview from './NodePreview';
 import FocusSearch from './FocusSearch';
 import ZoomControl from './ZoomControl';
+import HorizontalAligner from './HorizontalAligner';
 
 const nodeTypes = { mindmap: MindMapNode };
 
@@ -56,6 +57,20 @@ function toNode(n) {
   };
 }
 
+function estimateNodeWidth(node) {
+  const d = node.data || {};
+  const isRoot = !!d.isRoot;
+  const baseFont = isRoot ? 16 : 14;
+  const label = d.label || '';
+  const maxLabelWidth = isRoot ? 340 : 260;
+  const labelWidth = Math.min(label.length * baseFont * 0.65, maxLabelWidth);
+  const padding = (isRoot ? 22 : 16) * 2;
+  let extra = 4; // border
+  if (d.attachmentCount > 0) extra += 44; // badge
+  if (d.linked_canvas_id) extra += 30; // link icon
+  return Math.max(60, labelWidth + padding + extra);
+}
+
 // Parent-relative tree layout: root at (0, 0); each child starts just right of
 // its parent's right edge. Vertical spacing keeps leaves evenly separated.
 function autoLayout(nodes) {
@@ -75,26 +90,12 @@ function autoLayout(nodes) {
   const V_GAP = 90;
   const H_GAP = 60;
 
-  const estimateWidth = (id) => {
-    const d = (byId.get(id) && byId.get(id).data) || {};
-    const isRoot = !!d.isRoot;
-    const baseFont = isRoot ? 16 : 14;
-    const label = d.label || '';
-    const maxLabelWidth = isRoot ? 340 : 260;
-    const labelWidth = Math.min(label.length * baseFont * 0.65, maxLabelWidth);
-    const padding = (isRoot ? 22 : 16) * 2;
-    let extra = 4; // border
-    if (d.attachmentCount > 0) extra += 44; // badge
-    if (d.linked_canvas_id) extra += 30; // link icon
-    return Math.max(60, labelWidth + padding + extra);
-  };
-
   // Horizontal positions: parent-relative.
   const xPos = {};
   const assignX = (id, x) => {
     xPos[id] = x;
     for (const k of children.get(id) || []) {
-      assignX(k, x + estimateWidth(id) + H_GAP);
+      assignX(k, x + estimateNodeWidth(byId.get(id)) + H_GAP);
     }
   };
   for (const r of roots) assignX(r, 0);
@@ -169,6 +170,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [focusMode, setFocusMode] = useState(false);
   const [focusedNodeIds, setFocusedNodeIds] = useState([]);
   const [studyMode, setStudyMode] = useState(false);
+  const [alignMode, setAlignMode] = useState(false);
+  const [alignLine1, setAlignLine1] = useState(0);
+  const [alignLine2, setAlignLine2] = useState(300);
 
   const load = useCallback(async () => {
     try {
@@ -655,6 +659,58 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
   }, [nodes, setNodes, fitView, editMode, pushUndo]);
 
+  const enterAlignMode = useCallback(() => {
+    setAlignLine1(0);
+    setAlignLine2(300);
+    setPreviewNodeId(null);
+    setSelectedNodeId(null);
+    setAlignMode(true);
+  }, []);
+
+  const cancelAlign = useCallback(() => {
+    setAlignMode(false);
+  }, []);
+
+  const confirmAlign = useCallback(() => {
+    const hitNodes = nodes.filter((n) => {
+      const w = estimateNodeWidth(n);
+      return alignLine1 >= n.position.x && alignLine1 <= n.position.x + w;
+    });
+    if (hitNodes.length === 0) {
+      setAlignMode(false);
+      return;
+    }
+
+    // Parents + their siblings align on line 1.
+    const parentSet = new Set();
+    for (const n of hitNodes) {
+      parentSet.add(n.id);
+      const pid = n.data && n.data.parent_id ? n.data.parent_id : null;
+      for (const s of nodes) {
+        const spid = s.data && s.data.parent_id ? s.data.parent_id : null;
+        if (spid === pid) parentSet.add(s.id);
+      }
+    }
+
+    // Their children align on line 2 (to the right).
+    const childSet = new Set();
+    for (const n of nodes) {
+      if (n.data && n.data.parent_id && parentSet.has(n.data.parent_id)) {
+        childSet.add(n.id);
+      }
+    }
+
+    if (editMode) pushUndo();
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (parentSet.has(n.id)) return { ...n, position: { ...n.position, x: alignLine1 } };
+        if (childSet.has(n.id)) return { ...n, position: { ...n.position, x: alignLine2 } };
+        return n;
+      })
+    );
+    setAlignMode(false);
+  }, [nodes, alignLine1, alignLine2, editMode, pushUndo, setNodes]);
+
   const focusNode = useCallback(
     (id) => {
       clearTimeout(clickTimer.current);
@@ -794,6 +850,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button className="btn" onClick={arrangeTogether} title="Arrange nodes by hierarchy">
                 🧲 Arrange
               </button>
+              <button className="btn" onClick={enterAlignMode} title="Horizontal Aligner — drag two lines to align nodes">
+                ↔ Aligner
+              </button>
               <button className="btn btn-primary" onClick={saveEdit}>
                 💾 Save
               </button>
@@ -827,7 +886,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             maxZoom={2.5}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!studyMode}
+            nodesDraggable={!studyMode && !alignMode}
             nodesConnectable={!editMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
@@ -840,6 +899,17 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           </ReactFlow>
 
           <ZoomControl />
+
+          {alignMode && (
+            <HorizontalAligner
+              line1={alignLine1}
+              line2={alignLine2}
+              onLine1Change={setAlignLine1}
+              onLine2Change={setAlignLine2}
+              onConfirm={confirmAlign}
+              onCancel={cancelAlign}
+            />
+          )}
 
           {!studyMode && (
             <div className="canvas-toolbar">

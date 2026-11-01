@@ -1186,3 +1186,66 @@ mark {
   border-color: #fecaca;
 }
 
+/* ---------- Horizontal Aligner ---------- */
+.align-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  margin-left: -9px;
+  cursor: ew-resize;
+  z-index: 15;
+}
+
+.align-line::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dashed #f59e0b;
+}
+
+.align-line-2::before {
+  border-left-color: #10b981;
+}
+
+.align-line-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.align-line-2 .align-line-label {
+  background: #10b981;
+}
+
+.align-controls {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+.align-controls-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
