@@ -915,6 +915,29 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               </span>
             );
           })}
+          {editMode ? (
+            <>
+              <button className="btn btn-sm" onClick={undo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">
+                ↶
+              </button>
+              <button className="btn btn-sm" onClick={redo} disabled={!redoStack.length} title="Redo (Ctrl+A)">
+                ↷
+              </button>
+              <button className="btn btn-sm" onClick={enterAlignMode} title="Depth Aligner">
+                ↔
+              </button>
+              <button className="btn btn-sm btn-primary" onClick={saveEdit}>
+                💾 Save
+              </button>
+              <button className="btn btn-sm" onClick={cancelEdit}>
+                ✖ Cancel
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-sm btn-edit" onClick={enterEditMode}>
+              ✏️ Edit
+            </button>
+          )}
           <button
             className="btn btn-sm focus-exit"
             onClick={() => {
