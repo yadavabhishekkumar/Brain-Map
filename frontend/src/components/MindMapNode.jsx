@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 function MindMapNode({ data, selected }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id } = data;
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -13,7 +13,7 @@ function MindMapNode({ data, selected }) {
 
   return (
     <div
-      className={`mind-node${isRoot ? ' mind-node-root' : ''}${linked_canvas_id ? ' mind-node-link' : ''}${selected ? ' mind-node-selected' : ''}`}
+      className={`mind-node${isRoot ? ' mind-node-root' : ''}${linked_canvas_id ? ' mind-node-link' : ''}${selected ? ' mind-node-selected' : ''}${highlighted ? ' mind-node-child-highlight' : ''}`}
       style={{ padding: `${paddingY}px ${paddingX}px` }}
     >
       <Handle type="target" position={Position.Left} className="mind-handle" />

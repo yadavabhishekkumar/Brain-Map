@@ -907,3 +907,37 @@ mark {
   font-weight: 600;
 }
 
+/* ---------- Hover highlight / Focus mode / Study mode ---------- */
+.mind-node-child-highlight {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35), var(--shadow);
+}
+
+.canvas-shell.edit-mode .react-flow {
+  background: #fff7ed;
+}
+
+.btn-focus {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
+.btn-focus:hover {
+  background: #d1fae5;
+  border-color: #34d399;
+}
+
+.canvas-shell.study-mode .canvas-topbar {
+  display: none;
+}
+
+.study-exit {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: var(--shadow);
+}
+

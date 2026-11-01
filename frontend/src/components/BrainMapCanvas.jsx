@@ -121,6 +121,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const didFit = useRef(false);
   const clickTimer = useRef(null);
   const baselineRef = useRef(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const [focusedNodeId, setFocusedNodeId] = useState(null);
+  const [studyMode, setStudyMode] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -304,7 +308,30 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return [...pc, ...cl];
   }, [nodes, edges]);
 
-  // progressive disclosure: fade/hide nodes deeper than the zoom threshold
+  // In Focus Mode, only the focused node + its descendants are shown.
+  const focusedSubtreeIds = useMemo(() => {
+    if (!focusMode || !focusedNodeId) return null;
+    const set = new Set([focusedNodeId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const n of nodes) {
+        if (n.data && n.data.parent_id && set.has(n.data.parent_id) && !set.has(n.id)) {
+          set.add(n.id);
+          changed = true;
+        }
+      }
+    }
+    return set;
+  }, [focusMode, focusedNodeId, nodes]);
+
+  // Immediate children of the hovered node (highlighted).
+  const hoveredChildIds = useMemo(() => {
+    if (!hoveredNodeId) return new Set();
+    return new Set(nodes.filter((n) => n.data && n.data.parent_id === hoveredNodeId).map((n) => n.id));
+  }, [hoveredNodeId, nodes]);
+
+  // progressive disclosure + focus mode filtering + hover highlight
   const visible = useMemo(() => {
     const threshold = depthThreshold(zoom);
     const scale = nodeScale(zoom);
@@ -312,17 +339,18 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const vnodes = nodes.map((n) => {
       const d = (n.data && n.data.depth) || 0;
       const op = nodeOpacity(d, threshold);
-      if (op <= 0.03) hidden.add(n.id);
+      const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
+      if (op <= 0.03 || focusHidden) hidden.add(n.id);
       return {
         ...n,
-        hidden: op <= 0.03,
+        hidden: op <= 0.03 || focusHidden,
         style: { ...n.style, opacity: Math.max(op, 0), transition: 'opacity 200ms ease' },
-        data: { ...n.data, scale },
+        data: { ...n.data, scale, highlighted: hoveredChildIds.has(n.id) },
       };
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -396,9 +424,28 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [canvasId, setEdges]
   );
 
-  const handleNodeDragStop = useCallback((e, node) => {
-    api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
-  }, []);
+  const handleNodeDragStop = useCallback(
+    (e, node) => {
+      if (focusMode) {
+        // "Pin": drag a node to the far-right centre to focus on it.
+        const sx = node.position.x * zoom + viewport.x;
+        const sy = node.position.y * zoom + viewport.y;
+        const inPinZone =
+          sx > window.innerWidth * 0.72 &&
+          sy > window.innerHeight * 0.25 &&
+          sy < window.innerHeight * 0.75;
+        if (inPinZone) {
+          setFocusedNodeId(node.id);
+          load().finally(() => {
+            requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400 }));
+          });
+          return;
+        }
+      }
+      api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
+    },
+    [focusMode, zoom, viewport.x, viewport.y, load, fitView]
+  );
 
   const handleEdgesDelete = useCallback(
     (deleted) => {
@@ -464,6 +511,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setSelectedNodeId(null);
   }, []);
 
+  const handlePaneClick = useCallback(() => {
+    if (focusMode) setFocusedNodeId(null);
+    closePanels();
+  }, [focusMode, closePanels]);
+
   // Single click -> read-only preview (after a short delay so a double-click wins).
   const handleNodeClick = useCallback((e, node) => {
     clearTimeout(clickTimer.current);
@@ -526,7 +578,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }
 
   return (
-    <div className="canvas-shell">
+    <div className={`canvas-shell${editMode ? ' edit-mode' : ''}${studyMode ? ' study-mode' : ''}`}>
       <div className="canvas-topbar">
         <button className="btn" onClick={onBack}>
           ← Canvases
@@ -552,6 +604,22 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               </button>
               <button className="btn btn-edit" onClick={enterEditMode}>
                 ✏️ Edit
+              </button>
+              <button
+                className="btn btn-focus"
+                onClick={() => {
+                  if (focusMode) {
+                    setFocusMode(false);
+                    setFocusedNodeId(null);
+                  } else {
+                    setFocusMode(true);
+                  }
+                }}
+              >
+                🎯 {focusMode ? 'Exit Focus' : 'Focus Mode'}
+              </button>
+              <button className="btn" onClick={() => setStudyMode(true)}>
+                🖥 Study Mode
               </button>
             </>
           ) : (
@@ -584,10 +652,12 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onConnect={handleConnect}
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}
+            onNodeMouseEnter={(e, node) => setHoveredNodeId(node.id)}
+            onNodeMouseLeave={() => setHoveredNodeId(null)}
             onNodeDragStop={handleNodeDragStop}
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
-            onPaneClick={closePanels}
+            onPaneClick={handlePaneClick}
             minZoom={0.2}
             maxZoom={2.5}
             defaultEdgeOptions={{ type: 'smoothstep' }}
@@ -595,7 +665,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             nodesDraggable={!editMode}
             nodesConnectable={!editMode}
           >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#cbd5e1" />
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
             <Controls />
             <MiniMap
               pannable
@@ -605,32 +675,34 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           </ReactFlow>
 
-          <div className="canvas-toolbar">
-            {!editMode ? (
-              <>
-                <button className="btn btn-primary" onClick={addChild}>
-                  ＋ Child
-                </button>
-                <button className="btn" onClick={addSibling}>
-                  ＋ Sibling
-                </button>
-                <button className="btn" onClick={addRoot}>
-                  ＋ Root
-                </button>
-                <span className="toolbar-hint">Drag between nodes to connect topics</span>
-              </>
-            ) : (
-              <span className="toolbar-hint edit-hint">
-                ✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.
-              </span>
-            )}
-          </div>
+          {!studyMode && (
+            <div className="canvas-toolbar">
+              {!editMode ? (
+                <>
+                  <button className="btn btn-primary" onClick={addChild}>
+                    ＋ Child
+                  </button>
+                  <button className="btn" onClick={addSibling}>
+                    ＋ Sibling
+                  </button>
+                  <button className="btn" onClick={addRoot}>
+                    ＋ Root
+                  </button>
+                  <span className="toolbar-hint">Drag between nodes to connect topics</span>
+                </>
+              ) : (
+                <span className="toolbar-hint edit-hint">
+                  ✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.
+                </span>
+              )}
+            </div>
+          )}
 
-          {searchOpen && (
+          {!studyMode && searchOpen && (
             <SearchBar canvasId={canvasId} onFocus={focusNode} onClose={() => setSearchOpen(false)} />
           )}
 
-          {linkModalOpen && (
+          {!studyMode && linkModalOpen && (
             <LinkCanvasModal
               currentCanvasId={canvasId}
               parentId={selectedNodeId}
@@ -639,7 +711,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
-          {aiPanelOpen && (
+          {!studyMode && aiPanelOpen && (
             <AIBuildPanel
               canvasId={canvasId}
               selectedNode={nodes.find((n) => n.id === selectedNodeId) || null}
@@ -658,7 +730,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           )}
         </div>
 
-        {selectedNodeId && (
+        {selectedNodeId && !studyMode && (
           <NodeEditor
             nodeId={selectedNodeId}
             nodes={nodes}
@@ -672,6 +744,12 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           />
         )}
       </div>
+
+      {studyMode && (
+        <button className="btn study-exit" onClick={() => setStudyMode(false)}>
+          ✕ Exit Study Mode
+        </button>
+      )}
     </div>
   );
 }
