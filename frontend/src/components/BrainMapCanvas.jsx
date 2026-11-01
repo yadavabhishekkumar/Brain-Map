@@ -432,9 +432,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         const cx = event.clientX;
         const cy = event.clientY;
         const inPinZone =
-          cx > window.innerWidth * 0.72 &&
-          cy > window.innerHeight * 0.25 &&
-          cy < window.innerHeight * 0.75;
+          cx < window.innerWidth * 0.28 &&
+          cy > window.innerHeight * 0.35 &&
+          cy < window.innerHeight * 0.65;
         if (inPinZone) {
           setFocusedNodeId(node.id);
           load().finally(() => {
