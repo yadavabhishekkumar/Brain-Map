@@ -54,10 +54,14 @@ async function downloadPdf(issue, folder) {
     executablePath: CHROME,
     headless: true,
     acceptDownloads: true,
-    args: ['--no-sandbox'],
+    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+    ignoreDefaultArgs: ['--enable-automation'],
   });
   try {
     const page = context.pages()[0] || await context.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
     let pdfBuffer = null;
     let downloadObj = null;
     page.on('response', async (resp) => {
@@ -116,8 +120,13 @@ router.post('/login', async (req, res, next) => {
       executablePath: CHROME,
       headless: false,
       acceptDownloads: true,
+      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+      ignoreDefaultArgs: ['--enable-automation'],
     });
     const page = loginBrowser.pages()[0] || await loginBrowser.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
     await page.goto('https://epaper.thehindu.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
     res.json({
       ok: true,
