@@ -308,11 +308,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return [...pc, ...cl];
   }, [nodes, edges]);
 
-  // In Focus Mode, focused nodes and ALL their descendants stay visible;
-  // siblings and parents of focused nodes disappear from the canvas.
+  // In Focus Mode, only the most recently dropped node + its descendants
+  // stay visible on the canvas; earlier focused nodes are "forgotten"
+  // (but their chips remain in the bar).
   const focusedSubtreeIds = useMemo(() => {
     if (!focusMode || focusedNodeIds.length === 0) return null;
-    const set = new Set(focusedNodeIds);
+    const lastId = focusedNodeIds[focusedNodeIds.length - 1];
+    const set = new Set([lastId]);
     let changed = true;
     while (changed) {
       changed = false;
