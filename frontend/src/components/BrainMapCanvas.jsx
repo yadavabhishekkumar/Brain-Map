@@ -56,7 +56,8 @@ function toNode(n) {
   };
 }
 
-// Layered left-to-right tree layout: root at (0, 0), children to the right.
+// Parent-relative tree layout: root at (0, 0); each child starts just right of
+// its parent's right edge. Vertical spacing keeps leaves evenly separated.
 function autoLayout(nodes) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const children = new Map();
@@ -72,38 +73,68 @@ function autoLayout(nodes) {
   });
 
   const V_GAP = 90;
-  const H_GAP = 260;
+  const H_GAP = 60;
 
+  const estimateWidth = (id) => {
+    const d = (byId.get(id) && byId.get(id).data) || {};
+    const isRoot = !!d.isRoot;
+    const baseFont = isRoot ? 16 : 14;
+    const label = d.label || '';
+    const maxLabelWidth = isRoot ? 340 : 260;
+    const labelWidth = Math.min(label.length * baseFont * 0.65, maxLabelWidth);
+    const padding = (isRoot ? 22 : 16) * 2;
+    let extra = 4; // border
+    if (d.attachmentCount > 0) extra += 44; // badge
+    if (d.linked_canvas_id) extra += 30; // link icon
+    return Math.max(60, labelWidth + padding + extra);
+  };
+
+  // Horizontal positions: parent-relative.
+  const xPos = {};
+  const assignX = (id, x) => {
+    xPos[id] = x;
+    for (const k of children.get(id) || []) {
+      assignX(k, x + estimateWidth(id) + H_GAP);
+    }
+  };
+  for (const r of roots) assignX(r, 0);
+
+  // Vertical positions: subtree-height based (unchanged).
   const subtreeHeight = (id) => {
     const kids = children.get(id) || [];
     if (kids.length === 0) return V_GAP;
     return kids.reduce((s, k) => s + subtreeHeight(k), 0);
   };
 
-  const positions = {};
-  const place = (id, x, yTop) => {
+  const yPos = {};
+  const placeY = (id, yTop) => {
     const kids = children.get(id) || [];
     const h = subtreeHeight(id);
-    positions[id] = { x, y: yTop + h / 2 };
+    yPos[id] = yTop + h / 2;
     let cy = yTop;
     for (const k of kids) {
-      place(k, x + H_GAP, cy);
+      placeY(k, cy);
       cy += subtreeHeight(k);
     }
   };
 
   if (roots.length === 1) {
-    // centre the single root at the extreme-left centre (0, 0)
-    place(roots[0], 0, -subtreeHeight(roots[0]) / 2);
+    placeY(roots[0], -subtreeHeight(roots[0]) / 2);
   } else {
     let rootY = 0;
     for (const r of roots) {
-      place(r, 0, rootY);
+      placeY(r, rootY);
       rootY += subtreeHeight(r) + V_GAP;
     }
   }
 
-  return nodes.map((n) => ({ ...n, position: positions[n.id] || n.position }));
+  return nodes.map((n) => ({
+    ...n,
+    position: {
+      x: xPos[n.id] != null ? xPos[n.id] : n.position.x,
+      y: yPos[n.id] != null ? yPos[n.id] : n.position.y,
+    },
+  }));
 }
 
 export default function BrainMapCanvas(props) {
