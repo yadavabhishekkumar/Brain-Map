@@ -57,13 +57,21 @@ async function removeNode(id) {
 }
 
 async function search(q, canvasId) {
-  const must = [
-    { multi_match: { query: q, fields: ['label^3', 'content^2', 'extracted'], type: 'best_fields' } },
-  ];
-  if (canvasId) must.push({ term: { canvas_id: canvasId } });
+  const filter = [];
+  if (canvasId) filter.push({ term: { canvas_id: canvasId } });
 
   const data = await request('POST', `/${config.esIndex}/_search`, {
-    query: { bool: { must } },
+    query: {
+      bool: {
+        filter,
+        should: [
+          // prefix/autocomplete match on the title (like a search bar)
+          { match_phrase_prefix: { label: { query: q } } },
+          { multi_match: { query: q, fields: ['label^3', 'content^2', 'extracted'], type: 'best_fields' } },
+        ],
+        minimum_should_match: 1,
+      },
+    },
     highlight: {
       fields: { label: {}, content: {}, extracted: {} },
       pre_tags: ['<mark>'],

@@ -11,6 +11,7 @@ import SearchBar from './SearchBar';
 import LinkCanvasModal from './LinkCanvasModal';
 import AIBuildPanel from './AIBuildPanel';
 import NodePreview from './NodePreview';
+import FocusSearch from './FocusSearch';
 
 const nodeTypes = { mindmap: MindMapNode };
 
@@ -435,6 +436,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setFocusedNodeIds((ids) => ids.filter((x) => x !== id));
   }, []);
 
+  const handleFocusSelect = useCallback(
+    (id) => {
+      addFocus(id);
+      requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400 }));
+    },
+    [addFocus, fitView]
+  );
+
   const handleNodeDragStop = useCallback(
     (event, node) => {
       if (focusMode) {
@@ -749,8 +758,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       {focusMode && !studyMode && (
         <div className="focus-bar">
           <span className="focus-bar-title">🎯 Focus</span>
+          <FocusSearch canvasId={canvasId} onSelect={handleFocusSelect} />
           {focusedNodeIds.length === 0 && (
-            <span className="focus-bar-hint">Drag a node here to focus on it</span>
+            <span className="focus-bar-hint">or drag a node here</span>
           )}
           {focusedNodeIds.map((id) => {
             const n = nodes.find((x) => x.id === id);
