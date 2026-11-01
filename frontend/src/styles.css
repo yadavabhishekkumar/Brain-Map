@@ -1274,3 +1274,108 @@ mark {
   font-size: 13px;
 }
 
+/* ---------- The Hindu E-Paper downloader ---------- */
+.epaper-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, #eff6ff, #f5f3ff);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+}
+
+.epaper-banner-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.epaper-banner-sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.epaper-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.epaper-hero {
+  margin: 24px 0;
+}
+
+.epaper-hero h1 {
+  font-size: 30px;
+  margin: 0 0 8px;
+}
+
+.epaper-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.epaper-card label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.epaper-card input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.epaper-card input:focus {
+  border-color: var(--primary);
+}
+
+.epaper-card .btn {
+  margin-top: 14px;
+  align-self: flex-start;
+}
+
+.epaper-error {
+  margin-top: 16px;
+  color: var(--danger);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.epaper-results {
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.epaper-results-header {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.epaper-result-ok {
+  color: #047857;
+  margin: 4px 0;
+}
+
+.epaper-result-skip {
+  color: #b45309;
+  margin: 4px 0;
+}
+

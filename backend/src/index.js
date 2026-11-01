@@ -28,6 +28,7 @@ async function main() {
   app.use('/api/attachments', require('./routes/attachments'));
   app.use('/api/search', require('./routes/search'));
   app.use('/api/ai', require('./routes/ai'));
+  app.use('/api/epaper', require('./routes/epaper'));
 
   app.use((err, req, res, next) => {
     console.error('[error]', err);

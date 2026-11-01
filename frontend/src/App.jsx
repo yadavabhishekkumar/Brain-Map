@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CanvasList from './components/CanvasList';
 import BrainMapCanvas from './components/BrainMapCanvas';
+import Epaper from './components/Epaper';
 
 export default function App() {
   const [view, setView] = useState({ type: 'list' });
@@ -16,9 +17,14 @@ export default function App() {
     );
   }
 
+  if (view.type === 'epaper') {
+    return <Epaper onBack={() => setView({ type: 'list' })} />;
+  }
+
   return (
     <CanvasList
       onOpen={(id, name) => setView({ type: 'canvas', id, name })}
+      onOpenEpaper={() => setView({ type: 'epaper' })}
     />
   );
 }

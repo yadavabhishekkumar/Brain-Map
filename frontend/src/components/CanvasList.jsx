@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
-export default function CanvasList({ onOpen }) {
+export default function CanvasList({ onOpen, onOpenEpaper }) {
   const [canvases, setCanvases] = useState([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -69,6 +69,16 @@ export default function CanvasList({ onOpen }) {
             {creating ? 'Creating…' : '＋ Create a blank Canvas'}
           </button>
         </div>
+      </div>
+
+      <div className="epaper-banner">
+        <div>
+          <div className="epaper-banner-title">📰 The Hindu E-Paper</div>
+          <div className="epaper-banner-sub">Systematically download daily e-paper PDFs by date.</div>
+        </div>
+        <button className="btn" onClick={onOpenEpaper}>
+          Open Downloader
+        </button>
       </div>
 
       <div className="canvas-grid">
