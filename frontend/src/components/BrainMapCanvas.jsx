@@ -30,6 +30,12 @@ function nodeOpacity(depth, threshold) {
   return Math.max(0, 1 - (depth - threshold) * 1.25);
 }
 
+// Grow remaining nodes as the user zooms out, so their text stays readable.
+function nodeScale(zoom) {
+  if (zoom >= 1) return 1;
+  return Math.min(2.5, 1 / zoom);
+}
+
 function toNode(n) {
   return {
     id: n.id,
@@ -162,6 +168,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   // progressive disclosure: fade/hide nodes deeper than the zoom threshold
   const visible = useMemo(() => {
     const threshold = depthThreshold(zoom);
+    const scale = nodeScale(zoom);
     const hidden = new Set();
     const vnodes = nodes.map((n) => {
       const d = (n.data && n.data.depth) || 0;
@@ -171,6 +178,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         ...n,
         hidden: op <= 0.03,
         style: { ...n.style, opacity: Math.max(op, 0), transition: 'opacity 200ms ease' },
+        data: { ...n.data, scale },
       };
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
