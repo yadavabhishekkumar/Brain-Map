@@ -600,14 +600,19 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [editMode, stageDelete, selectedNodeId, previewNodeId, load]
   );
 
-  const autoLayoutAndSave = useCallback(async () => {
+  const arrangeTogether = useCallback(async () => {
     const layouted = autoLayout(nodes);
-    setNodes(layouted);
-    await Promise.allSettled(
-      layouted.map((n) => api.updateNode(n.id, { x: n.position.x, y: n.position.y }))
-    );
+    if (editMode) {
+      pushUndo();
+      setNodes(layouted);
+    } else {
+      setNodes(layouted);
+      await Promise.allSettled(
+        layouted.map((n) => api.updateNode(n.id, { x: n.position.x, y: n.position.y }))
+      );
+    }
     requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
-  }, [nodes, setNodes, fitView]);
+  }, [nodes, setNodes, fitView, editMode, pushUndo]);
 
   const focusNode = useCallback(
     (id) => {
@@ -712,8 +717,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
                 Fit view
               </button>
-              <button className="btn" onClick={autoLayoutAndSave}>
-                Auto layout
+              <button className="btn" onClick={arrangeTogether} title="Arrange all nodes by hierarchy, equally spaced">
+                🧲 Arrange Together
               </button>
               <button className="btn" onClick={() => setLinkModalOpen(true)}>
                 🔗 Link canvas
@@ -744,6 +749,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               </button>
               <button className="btn" onClick={redo} disabled={!redoStack.length} title="Redo (Ctrl+A)">
                 ↷ Redo
+              </button>
+              <button className="btn" onClick={arrangeTogether} title="Arrange nodes by hierarchy">
+                🧲 Arrange
               </button>
               <button className="btn btn-primary" onClick={saveEdit}>
                 💾 Save
