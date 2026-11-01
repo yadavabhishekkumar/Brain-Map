@@ -77,7 +77,11 @@ async function downloadPdf(issue, folder) {
       downloadObj = d;
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    } catch (e) {
+      // A download-triggered navigation aborts with net::ERR_ABORTED — expected.
+    }
 
     const start = Date.now();
     while (!downloadObj && !pdfBuffer && Date.now() - start < 60000) {
