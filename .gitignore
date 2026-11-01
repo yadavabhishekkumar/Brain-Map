@@ -2,5 +2,6 @@ node_modules/
 dist/
 .env
 backend/storage/
+.epaper-profile/
 *.log
 .DS_Store

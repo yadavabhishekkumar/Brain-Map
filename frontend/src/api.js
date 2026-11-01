@@ -67,6 +67,8 @@ export const api = {
   listChats: (nodeId) => request(`/nodes/${nodeId}/chats`),
 
   downloadEpaper: (payload) => request('/epaper/download', { method: 'POST', body: JSON.stringify(payload) }),
+
+  epaperLogin: () => request('/epaper/login', { method: 'POST', body: JSON.stringify({}) }),
 };
 
 export const fileUrl = (id) => `${API_BASE}/attachments/${id}/file`;

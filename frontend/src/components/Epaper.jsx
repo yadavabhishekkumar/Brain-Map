@@ -8,6 +8,8 @@ export default function Epaper({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginMsg, setLoginMsg] = useState('');
 
   const download = async () => {
     if (!date) {
@@ -31,6 +33,20 @@ export default function Epaper({ onBack }) {
       setError(e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const login = async () => {
+    setLoggingIn(true);
+    setError('');
+    setLoginMsg('');
+    try {
+      const r = await api.epaperLogin();
+      setLoginMsg(r.message || 'A browser window opened.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -62,6 +78,10 @@ export default function Epaper({ onBack }) {
           placeholder="Leave empty to use ~/HinduEpaper"
         />
 
+        <button className="btn" onClick={login} disabled={loggingIn}>
+          {loggingIn ? 'Opening browser…' : '🔑 Login / refresh session'}
+        </button>
+        {loginMsg && <div className="epaper-login-msg">{loginMsg}</div>}
         <button className="btn btn-primary" onClick={download} disabled={busy || !date}>
           {busy ? 'Downloading…' : '⬇ Download PDF'}
         </button>

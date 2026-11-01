@@ -3,6 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { chromium } = require('playwright-core');
 
 const router = express.Router();
 
@@ -11,6 +12,10 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   Referer: 'https://epaper.thehindu.com/',
 };
+const CHROME = process.env.EPAPER_CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const PROFILE_DIR = process.env.EPAPER_PROFILE_DIR || path.join(__dirname, '..', '..', '.epaper-profile');
+
+let loginBrowser = null;
 
 function toDateStr(d) {
   const p = (n) => String(n).padStart(2, '0');
@@ -24,30 +29,70 @@ async function resolveIssue(date) {
   return web && web.length ? web[0] : null;
 }
 
-async function downloadPdf(issue, folder) {
-  const url = `${BASE}/issues/${issue.id}/pagespdffull?download=true`;
-  const resp = await axios.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 180000,
-    headers: HEADERS,
-  });
-  const buf = Buffer.from(resp.data);
-  const head = buf.slice(0, 1024).toString('latin1');
-  const isPdf = head.indexOf('%PDF') === 0;
-  if (!isPdf) {
-    const isHtml = /<html|<!doctype/i.test(head);
-    throw new Error(
-      isHtml
-        ? 'The Hindu returned a web page instead of a PDF. The e-paper download now requires the reader app (and likely a subscription).'
-        : 'Downloaded content is not a valid PDF.'
-    );
+async function ensureLoginClosed() {
+  if (loginBrowser) {
+    try {
+      await loginBrowser.close();
+    } catch (e) {}
+    loginBrowser = null;
   }
-  fs.mkdirSync(folder, { recursive: true });
+}
+
+function isPdf(buf) {
+  return buf && buf.length > 4 && buf.slice(0, 5).toString('ascii').startsWith('%PDF');
+}
+
+async function downloadPdf(issue, folder) {
+  await ensureLoginClosed();
+  const url = `${BASE}/issues/${issue.id}/pagespdffull?download=true`;
   const dateStr = (issue.publishedDate || '').slice(0, 10);
   const filename = `TheHindu_${dateStr}.pdf`;
+  fs.mkdirSync(folder, { recursive: true });
   const filePath = path.join(folder, filename);
-  fs.writeFileSync(filePath, buf);
-  return { filename, filePath, size: buf.length };
+
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    executablePath: CHROME,
+    headless: true,
+    acceptDownloads: true,
+    args: ['--no-sandbox'],
+  });
+  try {
+    const page = context.pages()[0] || await context.newPage();
+    let pdfBuffer = null;
+    let downloadObj = null;
+    page.on('response', async (resp) => {
+      const ct = (resp.headers()['content-type'] || '').toLowerCase();
+      if (ct.includes('pdf')) {
+        try {
+          const b = await resp.body();
+          if (isPdf(b)) pdfBuffer = b;
+        } catch (e) {}
+      }
+    });
+    page.on('download', (d) => {
+      downloadObj = d;
+    });
+
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    const start = Date.now();
+    while (!downloadObj && !pdfBuffer && Date.now() - start < 60000) {
+      await page.waitForTimeout(500);
+    }
+
+    if (downloadObj) {
+      await downloadObj.saveAs(filePath);
+    } else if (pdfBuffer) {
+      fs.writeFileSync(filePath, pdfBuffer);
+    } else {
+      throw new Error(
+        'Could not download the PDF — you may need to log in first. Use the "Login" button, sign in to The Hindu, then retry.'
+      );
+    }
+    return { filename, filePath, size: fs.statSync(filePath).size };
+  } finally {
+    await context.close();
+  }
 }
 
 // Resolve a date -> issue (preview without downloading)
@@ -58,6 +103,26 @@ router.get('/resolve', async (req, res, next) => {
     const issue = await resolveIssue(date);
     if (!issue) return res.status(404).json({ error: `No e-paper found for ${date}` });
     res.json({ date, issueId: issue.id, title: issue.title, publishedDate: issue.publishedDate });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Open a browser window so the user can log in once (session is reused afterwards)
+router.post('/login', async (req, res, next) => {
+  try {
+    await ensureLoginClosed();
+    loginBrowser = await chromium.launchPersistentContext(PROFILE_DIR, {
+      executablePath: CHROME,
+      headless: false,
+      acceptDownloads: true,
+    });
+    const page = loginBrowser.pages()[0] || await loginBrowser.newPage();
+    await page.goto('https://epaper.thehindu.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    res.json({
+      ok: true,
+      message: 'A browser window opened — log in to The Hindu, then close the window and retry the download.',
+    });
   } catch (e) {
     next(e);
   }
