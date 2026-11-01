@@ -56,8 +56,7 @@ function toNode(n) {
   };
 }
 
-// Layered left-to-right tree layout: root at (0, 0), children to the right,
-// leaves equally spaced vertically.
+// Layered left-to-right tree layout: root at (0, 0), children to the right.
 function autoLayout(nodes) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const children = new Map();
@@ -75,33 +74,32 @@ function autoLayout(nodes) {
   const V_GAP = 90;
   const H_GAP = 260;
 
-  const leafCount = (id) => {
+  const subtreeHeight = (id) => {
     const kids = children.get(id) || [];
-    if (kids.length === 0) return 1;
-    return kids.reduce((s, k) => s + leafCount(k), 0);
+    if (kids.length === 0) return V_GAP;
+    return kids.reduce((s, k) => s + subtreeHeight(k), 0);
   };
 
   const positions = {};
-  const place = (id, x, y) => {
-    positions[id] = { x, y };
+  const place = (id, x, yTop) => {
     const kids = children.get(id) || [];
-    if (kids.length === 0) return;
-    const totalLeaves = kids.reduce((s, k) => s + leafCount(k), 0);
-    let yTop = y - (totalLeaves * V_GAP) / 2;
+    const h = subtreeHeight(id);
+    positions[id] = { x, y: yTop + h / 2 };
+    let cy = yTop;
     for (const k of kids) {
-      const lc = leafCount(k);
-      place(k, x + H_GAP, yTop + (lc * V_GAP) / 2);
-      yTop += lc * V_GAP;
+      place(k, x + H_GAP, cy);
+      cy += subtreeHeight(k);
     }
   };
 
   if (roots.length === 1) {
-    place(roots[0], 0, 0);
+    // centre the single root at the extreme-left centre (0, 0)
+    place(roots[0], 0, -subtreeHeight(roots[0]) / 2);
   } else {
-    let y = 0;
+    let rootY = 0;
     for (const r of roots) {
-      place(r, 0, y);
-      y += Math.max(leafCount(r), 1) * V_GAP + V_GAP;
+      place(r, 0, rootY);
+      rootY += subtreeHeight(r) + V_GAP;
     }
   }
 
