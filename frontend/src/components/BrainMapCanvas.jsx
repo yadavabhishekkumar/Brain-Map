@@ -903,6 +903,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onDeleteNode={onDeleteNode}
             width={panelWidth}
             onResize={setPanelWidth}
+            tempNode={
+              nodes.find((n) => n.id === selectedNodeId && String(n.id).startsWith('tmp-')) || null
+            }
           />
         )}
       </div>

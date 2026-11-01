@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { renderMarkdown } from '../markdown';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -49,6 +49,25 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   }, [onResize]);
 
   const load = useCallback(async () => {
+    // Newly created nodes (edit mode) have temp ids and aren't in the DB yet.
+    if (tempNode) {
+      const d = tempNode.data || {};
+      setNode({
+        id: tempNode.id,
+        label: d.label || '',
+        content: d.content || '',
+        parent_id: d.parent_id || null,
+        depth: d.depth || 0,
+        linked_canvas_id: d.linked_canvas_id || null,
+        linked_canvas_name: d.linked_canvas_name || '',
+        attachment_count: d.attachmentCount || 0,
+      });
+      setLabel(d.label || '');
+      setContent(d.content || '');
+      setParentId(d.parent_id || '');
+      setAttachments([]);
+      return;
+    }
     try {
       const n = await api.getNode(nodeId);
       setNode(n);
@@ -59,7 +78,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     } catch (e) {
       alert(e.message);
     }
-  }, [nodeId]);
+  }, [nodeId, tempNode]);
 
   useEffect(() => {
     load();
@@ -88,6 +107,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const onUpload = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    if (tempNode) {
+      alert('This node is new — save the canvas first to attach notes to it.');
+      return;
+    }
     setUploading(true);
     try {
       await api.uploadAttachment(nodeId, file);
@@ -147,6 +170,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   };
 
   const ask = async () => {
+    if (tempNode) {
+      alert('This node is new — save the canvas first to ask AI about it.');
+      return;
+    }
     if (!question.trim() || asking) return;
     setAsking(true);
     setAnswer('');
