@@ -308,15 +308,19 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return [...pc, ...cl];
   }, [nodes, edges]);
 
-  // In Focus Mode, show only the DIRECT children of focused nodes.
-  // Focused nodes themselves (and everything else) disappear from the canvas.
-  const focusedVisibleIds = useMemo(() => {
+  // In Focus Mode, focused nodes and ALL their descendants stay visible;
+  // siblings and parents of focused nodes disappear from the canvas.
+  const focusedSubtreeIds = useMemo(() => {
     if (!focusMode || focusedNodeIds.length === 0) return null;
-    const focused = new Set(focusedNodeIds);
-    const set = new Set();
-    for (const n of nodes) {
-      if (n.data && n.data.parent_id && focused.has(n.data.parent_id) && !focused.has(n.id)) {
-        set.add(n.id);
+    const set = new Set(focusedNodeIds);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const n of nodes) {
+        if (n.data && n.data.parent_id && set.has(n.data.parent_id) && !set.has(n.id)) {
+          set.add(n.id);
+          changed = true;
+        }
       }
     }
     return set;
@@ -336,7 +340,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const vnodes = nodes.map((n) => {
       const d = (n.data && n.data.depth) || 0;
       const op = nodeOpacity(d, threshold);
-      const focusHidden = focusedVisibleIds && !focusedVisibleIds.has(n.id);
+      const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       if (op <= 0.03 || focusHidden) hidden.add(n.id);
       return {
         ...n,
@@ -347,7 +351,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedVisibleIds, hoveredChildIds]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -433,7 +437,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     (event, node) => {
       if (focusMode) {
         // Drop a node onto the focus bar (top of screen) to focus on it.
-        if (event.clientY < 60) {
+        const cy = event.clientY != null ? event.clientY : event.sourceEvent && event.sourceEvent.clientY;
+        if (typeof cy === 'number' && cy < 70) {
           addFocus(node.id);
           load().finally(() => {
             requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400 }));
