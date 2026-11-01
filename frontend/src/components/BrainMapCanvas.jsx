@@ -308,18 +308,15 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return [...pc, ...cl];
   }, [nodes, edges]);
 
-  // In Focus Mode, only the focused nodes + their descendants are shown.
-  const focusedSubtreeIds = useMemo(() => {
+  // In Focus Mode, show only the DIRECT children of focused nodes.
+  // Focused nodes themselves (and everything else) disappear from the canvas.
+  const focusedVisibleIds = useMemo(() => {
     if (!focusMode || focusedNodeIds.length === 0) return null;
-    const set = new Set(focusedNodeIds);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const n of nodes) {
-        if (n.data && n.data.parent_id && set.has(n.data.parent_id) && !set.has(n.id)) {
-          set.add(n.id);
-          changed = true;
-        }
+    const focused = new Set(focusedNodeIds);
+    const set = new Set();
+    for (const n of nodes) {
+      if (n.data && n.data.parent_id && focused.has(n.data.parent_id) && !focused.has(n.id)) {
+        set.add(n.id);
       }
     }
     return set;
@@ -339,7 +336,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const vnodes = nodes.map((n) => {
       const d = (n.data && n.data.depth) || 0;
       const op = nodeOpacity(d, threshold);
-      const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
+      const focusHidden = focusedVisibleIds && !focusedVisibleIds.has(n.id);
       if (op <= 0.03 || focusHidden) hidden.add(n.id);
       return {
         ...n,
@@ -350,7 +347,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, hoveredChildIds]);
+  }, [nodes, derivedEdges, zoom, focusedVisibleIds, hoveredChildIds]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
