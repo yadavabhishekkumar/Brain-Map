@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
-  ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap,
+  ReactFlowProvider, Background, BackgroundVariant, MiniMap,
   useReactFlow, useViewport, useNodesState, useEdgesState, applyNodeChanges, applyEdgeChanges, MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -12,6 +12,7 @@ import LinkCanvasModal from './LinkCanvasModal';
 import AIBuildPanel from './AIBuildPanel';
 import NodePreview from './NodePreview';
 import FocusSearch from './FocusSearch';
+import ZoomControl from './ZoomControl';
 
 const nodeTypes = { mindmap: MindMapNode };
 
@@ -676,7 +677,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             nodesConnectable={!editMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
-            <Controls />
             <MiniMap
               pannable
               zoomable
@@ -684,6 +684,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               maskColor="rgba(241,245,249,0.7)"
             />
           </ReactFlow>
+
+          <ZoomControl />
 
           {!studyMode && (
             <div className="canvas-toolbar">

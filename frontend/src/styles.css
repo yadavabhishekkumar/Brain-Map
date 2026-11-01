@@ -235,8 +235,9 @@ select {
 
 .canvas-toolbar {
   position: absolute;
-  left: 16px;
+  left: 50%;
   bottom: 16px;
+  transform: translateX(-50%);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -1068,5 +1069,63 @@ mark {
   padding: 8px 12px;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* ---------- Zoom control (magnifier + slider) ---------- */
+.zoom-control {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+
+.zoom-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  box-shadow: var(--shadow);
+}
+
+.zoom-slider {
+  width: 160px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.zoom-pct {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 38px;
+  text-align: center;
+}
+
+.zoom-fit {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text);
+  padding: 0 2px;
 }
 
