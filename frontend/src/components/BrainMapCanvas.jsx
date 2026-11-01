@@ -106,6 +106,15 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [alignMode, setAlignMode] = useState(false);
   const [alignLines, setAlignLines] = useState([]);
   const alignBaselineRef = useRef(null);
+  const [revealedParentIds, setRevealedParentIds] = useState(() => new Set());
+
+  const expandChildren = useCallback((nodeId) => {
+    setRevealedParentIds((prev) => {
+      const next = new Set(prev);
+      next.add(nodeId);
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -421,27 +430,52 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return new Set(nodes.filter((n) => n.data && n.data.parent_id === hoveredNodeId).map((n) => n.id));
   }, [hoveredNodeId, nodes]);
 
-  // progressive disclosure + focus mode filtering + hover highlight
+  // progressive disclosure + focus mode filtering + hover highlight + reveal
   const visible = useMemo(() => {
     const threshold = depthThreshold(zoom);
     const scale = nodeScale(zoom);
     const hidden = new Set();
+
+    // Pass 1: decide hidden nodes (depth threshold + focus + reveal override).
+    nodes.forEach((n) => {
+      const rawDepth = (n.data && n.data.depth) || 0;
+      const d = focusedSubtreeIds ? Math.max(0, rawDepth - focusBaseDepth) : rawDepth;
+      const parentId = n.data && n.data.parent_id;
+      const revealed = !!parentId && revealedParentIds.has(parentId);
+      const op = revealed ? 1 : nodeOpacity(d, threshold);
+      const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
+      if (op <= 0.03 || focusHidden) hidden.add(n.id);
+    });
+
+    // Pass 2: build visible nodes + flag nodes that have hidden children.
     const vnodes = nodes.map((n) => {
       const rawDepth = (n.data && n.data.depth) || 0;
       const d = focusedSubtreeIds ? Math.max(0, rawDepth - focusBaseDepth) : rawDepth;
-      const op = nodeOpacity(d, threshold);
+      const parentId = n.data && n.data.parent_id;
+      const revealed = !!parentId && revealedParentIds.has(parentId);
+      const op = revealed ? 1 : nodeOpacity(d, threshold);
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
-      if (op <= 0.03 || focusHidden) hidden.add(n.id);
+      const hasHiddenChildren = nodes.some(
+        (c) => c.data && c.data.parent_id === n.id && hidden.has(c.id)
+      );
       return {
         ...n,
         hidden: op <= 0.03 || focusHidden,
         style: { ...n.style, opacity: Math.max(op, 0), transition: 'opacity 200ms ease' },
-        data: { ...n.data, scale, highlighted: hoveredChildIds.has(n.id), editMode, onAction: onNodeAction },
+        data: {
+          ...n.data,
+          scale,
+          highlighted: hoveredChildIds.has(n.id),
+          editMode,
+          onAction: onNodeAction,
+          hasHiddenChildren,
+          onExpand: expandChildren,
+        },
       };
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, onNodeAction]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, onNodeAction, revealedParentIds, expandChildren]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
