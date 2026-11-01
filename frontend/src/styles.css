@@ -941,30 +941,64 @@ mark {
   box-shadow: var(--shadow);
 }
 
-/* ---------- Focus Mode drop zone ---------- */
-.pin-zone {
-  position: absolute;
-  top: 35%;
-  left: 16px;
-  width: 26%;
-  height: 30%;
-  border: 2px dashed #f59e0b;
-  border-radius: 12px;
-  background: rgba(255, 251, 235, 0.35);
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: #b45309;
-  font-size: 13px;
-  font-weight: 700;
-  text-align: center;
-  z-index: 4;
+/* ---------- Focus Mode bar ---------- */
+.canvas-shell.focus-mode .canvas-topbar {
+  display: none;
 }
 
-.pin-zone-icon {
-  font-size: 18px;
+.focus-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  z-index: 30;
+}
+
+.focus-bar-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.focus-bar-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.focus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.focus-chip-x {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.focus-chip-x:hover {
+  color: var(--danger);
+}
+
+.focus-exit {
+  margin-left: auto;
 }
 

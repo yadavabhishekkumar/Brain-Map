@@ -123,7 +123,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const baselineRef = useRef(null);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [focusedNodeId, setFocusedNodeId] = useState(null);
+  const [focusedNodeIds, setFocusedNodeIds] = useState([]);
   const [studyMode, setStudyMode] = useState(false);
 
   const load = useCallback(async () => {
@@ -308,10 +308,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return [...pc, ...cl];
   }, [nodes, edges]);
 
-  // In Focus Mode, only the focused node + its descendants are shown.
+  // In Focus Mode, only the focused nodes + their descendants are shown.
   const focusedSubtreeIds = useMemo(() => {
-    if (!focusMode || !focusedNodeId) return null;
-    const set = new Set([focusedNodeId]);
+    if (!focusMode || focusedNodeIds.length === 0) return null;
+    const set = new Set(focusedNodeIds);
     let changed = true;
     while (changed) {
       changed = false;
@@ -323,7 +323,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       }
     }
     return set;
-  }, [focusMode, focusedNodeId, nodes]);
+  }, [focusMode, focusedNodeIds, nodes]);
 
   // Immediate children of the hovered node (highlighted).
   const hoveredChildIds = useMemo(() => {
@@ -424,19 +424,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [canvasId, setEdges]
   );
 
+  const addFocus = useCallback((id) => {
+    setFocusedNodeIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
+  }, []);
+
+  const removeFocus = useCallback((id) => {
+    setFocusedNodeIds((ids) => ids.filter((x) => x !== id));
+  }, []);
+
   const handleNodeDragStop = useCallback(
     (event, node) => {
       if (focusMode) {
-        // "Pin": drop a node inside the right-centre drop zone to focus on it.
-        // Use the pointer position (auto-panning keeps the node under the cursor).
-        const cx = event.clientX;
-        const cy = event.clientY;
-        const inPinZone =
-          cx < window.innerWidth * 0.28 &&
-          cy > window.innerHeight * 0.35 &&
-          cy < window.innerHeight * 0.65;
-        if (inPinZone) {
-          setFocusedNodeId(node.id);
+        // Drop a node onto the focus bar (top of screen) to focus on it.
+        if (event.clientY < 60) {
+          addFocus(node.id);
           load().finally(() => {
             requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400 }));
           });
@@ -445,7 +446,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       }
       api.updateNode(node.id, { x: node.position.x, y: node.position.y }).catch(console.error);
     },
-    [focusMode, load, fitView]
+    [focusMode, addFocus, load, fitView]
   );
 
   const handleEdgesDelete = useCallback(
@@ -513,9 +514,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, []);
 
   const handlePaneClick = useCallback(() => {
-    if (focusMode) setFocusedNodeId(null);
     closePanels();
-  }, [focusMode, closePanels]);
+  }, [closePanels]);
 
   // Single click -> read-only preview (after a short delay so a double-click wins).
   const handleNodeClick = useCallback((e, node) => {
@@ -579,7 +579,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }
 
   return (
-    <div className={`canvas-shell${editMode ? ' edit-mode' : ''}${studyMode ? ' study-mode' : ''}`}>
+    <div className={`canvas-shell${editMode ? ' edit-mode' : ''}${studyMode ? ' study-mode' : ''}${focusMode ? ' focus-mode' : ''}`}>
       <div className="canvas-topbar">
         <button className="btn" onClick={onBack}>
           ← Canvases
@@ -609,15 +609,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button
                 className="btn btn-focus"
                 onClick={() => {
-                  if (focusMode) {
-                    setFocusMode(false);
-                    setFocusedNodeId(null);
-                  } else {
-                    setFocusMode(true);
-                  }
+                  setFocusedNodeIds([]);
+                  setFocusMode(true);
                 }}
               >
-                🎯 {focusMode ? 'Exit Focus' : 'Focus Mode'}
+                🎯 Focus Mode
               </button>
               <button className="btn" onClick={() => setStudyMode(true)}>
                 🖥 Study Mode
@@ -675,13 +671,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               maskColor="rgba(241,245,249,0.7)"
             />
           </ReactFlow>
-
-          {focusMode && !studyMode && (
-            <div className="pin-zone">
-              <span className="pin-zone-icon">🎯</span>
-              <span>Drag a node here to focus</span>
-            </div>
-          )}
 
           {!studyMode && (
             <div className="canvas-toolbar">
@@ -752,6 +741,35 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           />
         )}
       </div>
+
+      {focusMode && !studyMode && (
+        <div className="focus-bar">
+          <span className="focus-bar-title">🎯 Focus</span>
+          {focusedNodeIds.length === 0 && (
+            <span className="focus-bar-hint">Drag a node here to focus on it</span>
+          )}
+          {focusedNodeIds.map((id) => {
+            const n = nodes.find((x) => x.id === id);
+            return (
+              <span key={id} className="focus-chip">
+                <span className="focus-chip-label">{n ? n.data.label : 'Node'}</span>
+                <button className="focus-chip-x" title="Remove focus" onClick={() => removeFocus(id)}>
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+          <button
+            className="btn btn-sm focus-exit"
+            onClick={() => {
+              setFocusMode(false);
+              setFocusedNodeIds([]);
+            }}
+          >
+            ✖ Exit Focus
+          </button>
+        </div>
+      )}
 
       {studyMode && (
         <button className="btn study-exit" onClick={() => setStudyMode(false)}>
