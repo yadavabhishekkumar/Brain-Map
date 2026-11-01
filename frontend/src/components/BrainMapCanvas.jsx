@@ -71,73 +71,6 @@ function estimateNodeWidth(node) {
   return Math.max(60, labelWidth + padding + extra);
 }
 
-// Parent-relative tree layout: root at (0, 0); each child starts just right of
-// its parent's right edge. Vertical spacing keeps leaves evenly separated.
-function autoLayout(nodes) {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const children = new Map();
-  const roots = [];
-  nodes.forEach((n) => {
-    const pid = n.data && n.data.parent_id;
-    if (pid && byId.has(pid)) {
-      if (!children.has(pid)) children.set(pid, []);
-      children.get(pid).push(n.id);
-    } else {
-      roots.push(n.id);
-    }
-  });
-
-  const V_GAP = 90;
-  const H_GAP = 60;
-
-  // Horizontal positions: parent-relative.
-  const xPos = {};
-  const assignX = (id, x) => {
-    xPos[id] = x;
-    for (const k of children.get(id) || []) {
-      assignX(k, x + estimateNodeWidth(byId.get(id)) + H_GAP);
-    }
-  };
-  for (const r of roots) assignX(r, 0);
-
-  // Vertical positions: subtree-height based (unchanged).
-  const subtreeHeight = (id) => {
-    const kids = children.get(id) || [];
-    if (kids.length === 0) return V_GAP;
-    return kids.reduce((s, k) => s + subtreeHeight(k), 0);
-  };
-
-  const yPos = {};
-  const placeY = (id, yTop) => {
-    const kids = children.get(id) || [];
-    const h = subtreeHeight(id);
-    yPos[id] = yTop + h / 2;
-    let cy = yTop;
-    for (const k of kids) {
-      placeY(k, cy);
-      cy += subtreeHeight(k);
-    }
-  };
-
-  if (roots.length === 1) {
-    placeY(roots[0], -subtreeHeight(roots[0]) / 2);
-  } else {
-    let rootY = 0;
-    for (const r of roots) {
-      placeY(r, rootY);
-      rootY += subtreeHeight(r) + V_GAP;
-    }
-  }
-
-  return nodes.map((n) => ({
-    ...n,
-    position: {
-      x: xPos[n.id] != null ? xPos[n.id] : n.position.x,
-      y: yPos[n.id] != null ? yPos[n.id] : n.position.y,
-    },
-  }));
-}
-
 export default function BrainMapCanvas(props) {
   return (
     <ReactFlowProvider>
@@ -645,20 +578,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [editMode, stageDelete, selectedNodeId, previewNodeId, load]
   );
 
-  const arrangeTogether = useCallback(async () => {
-    const layouted = autoLayout(nodes);
-    if (editMode) {
-      pushUndo();
-      setNodes(layouted);
-    } else {
-      setNodes(layouted);
-      await Promise.allSettled(
-        layouted.map((n) => api.updateNode(n.id, { x: n.position.x, y: n.position.y }))
-      );
-    }
-    requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
-  }, [nodes, setNodes, fitView, editMode, pushUndo]);
-
   const enterAlignMode = useCallback(() => {
     alignBaselineRef.current = makeSnapshot();
     let maxDepth = 0;
@@ -819,9 +738,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
                 Fit view
               </button>
-              <button className="btn" onClick={arrangeTogether} title="Arrange all nodes by hierarchy, equally spaced">
-                🧲 Arrange Together
-              </button>
               <button className="btn" onClick={() => setLinkModalOpen(true)}>
                 🔗 Link canvas
               </button>
@@ -852,10 +768,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button className="btn" onClick={redo} disabled={!redoStack.length} title="Redo (Ctrl+A)">
                 ↷ Redo
               </button>
-              <button className="btn" onClick={arrangeTogether} title="Arrange nodes by hierarchy">
-                🧲 Arrange
-              </button>
-              <button className="btn" onClick={enterAlignMode} title="Horizontal Aligner — drag two lines to align nodes">
+              <button className="btn" onClick={enterAlignMode} title="Horizontal Aligner — drag lines to align nodes">
                 ↔ Aligner
               </button>
               <button className="btn btn-primary" onClick={saveEdit}>
