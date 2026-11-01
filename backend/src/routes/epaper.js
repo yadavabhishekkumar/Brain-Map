@@ -31,12 +31,23 @@ async function downloadPdf(issue, folder) {
     timeout: 180000,
     headers: HEADERS,
   });
+  const buf = Buffer.from(resp.data);
+  const head = buf.slice(0, 1024).toString('latin1');
+  const isPdf = head.indexOf('%PDF') === 0;
+  if (!isPdf) {
+    const isHtml = /<html|<!doctype/i.test(head);
+    throw new Error(
+      isHtml
+        ? 'The Hindu returned a web page instead of a PDF. The e-paper download now requires the reader app (and likely a subscription).'
+        : 'Downloaded content is not a valid PDF.'
+    );
+  }
   fs.mkdirSync(folder, { recursive: true });
   const dateStr = (issue.publishedDate || '').slice(0, 10);
   const filename = `TheHindu_${dateStr}.pdf`;
   const filePath = path.join(folder, filename);
-  fs.writeFileSync(filePath, resp.data);
-  return { filename, filePath, size: resp.data.length || 0 };
+  fs.writeFileSync(filePath, buf);
+  return { filename, filePath, size: buf.length };
 }
 
 // Resolve a date -> issue (preview without downloading)
