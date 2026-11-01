@@ -660,44 +660,48 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, [nodes, setNodes, fitView, editMode, pushUndo]);
 
   const enterAlignMode = useCallback(() => {
-    setAlignLine1(0);
-    setAlignLine2(300);
+    let minX = Infinity;
+    for (const n of nodes) if (n.position.x < minX) minX = n.position.x;
+    if (minX === Infinity) minX = 0;
+    setAlignLine1(minX);
+    setAlignLine2(minX + 320);
     setPreviewNodeId(null);
     setSelectedNodeId(null);
     setAlignMode(true);
-  }, []);
+  }, [nodes]);
 
   const cancelAlign = useCallback(() => {
     setAlignMode(false);
   }, []);
 
   const confirmAlign = useCallback(() => {
-    const hitNodes = nodes.filter((n) => {
-      const w = estimateNodeWidth(n);
-      return alignLine1 >= n.position.x && alignLine1 <= n.position.x + w;
-    });
-    if (hitNodes.length === 0) {
+    // The node whose left edge is closest to line 1 defines the parent level.
+    let closest = null;
+    let minDist = Infinity;
+    for (const n of nodes) {
+      const d = Math.abs(n.position.x - alignLine1);
+      if (d < minDist) {
+        minDist = d;
+        closest = n;
+      }
+    }
+    if (!closest) {
       setAlignMode(false);
       return;
     }
 
-    // Parents + their siblings align on line 1.
+    // That node + all its siblings align on line 1.
+    const pid = closest.data && closest.data.parent_id ? closest.data.parent_id : null;
     const parentSet = new Set();
-    for (const n of hitNodes) {
-      parentSet.add(n.id);
-      const pid = n.data && n.data.parent_id ? n.data.parent_id : null;
-      for (const s of nodes) {
-        const spid = s.data && s.data.parent_id ? s.data.parent_id : null;
-        if (spid === pid) parentSet.add(s.id);
-      }
+    for (const n of nodes) {
+      const np = n.data && n.data.parent_id ? n.data.parent_id : null;
+      if (np === pid) parentSet.add(n.id);
     }
 
     // Their children align on line 2 (to the right).
     const childSet = new Set();
     for (const n of nodes) {
-      if (n.data && n.data.parent_id && parentSet.has(n.data.parent_id)) {
-        childSet.add(n.id);
-      }
+      if (n.data && n.data.parent_id && parentSet.has(n.data.parent_id)) childSet.add(n.id);
     }
 
     if (editMode) pushUndo();

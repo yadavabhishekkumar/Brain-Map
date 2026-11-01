@@ -1191,10 +1191,10 @@ mark {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 18px;
-  margin-left: -9px;
+  width: 20px;
+  margin-left: -10px;
   cursor: ew-resize;
-  z-index: 15;
+  z-index: 2000;
 }
 
 .align-line::before {
@@ -1241,7 +1241,7 @@ mark {
   border-radius: var(--radius);
   padding: 8px 12px;
   box-shadow: var(--shadow);
-  z-index: 20;
+  z-index: 2100;
 }
 
 .align-controls-title {
