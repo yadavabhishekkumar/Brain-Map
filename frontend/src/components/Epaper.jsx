@@ -248,7 +248,9 @@ export default function Epaper({ onBack, onOpenCanvas }) {
         {analysis && (
           <div className="epaper-analysis">
             <div className="epaper-analysis-meta">
-              Extracted {analysis.extractedLength} characters{analysis.truncated ? ' (truncated for context)' : ''}
+              Extracted {analysis.extractedLength} characters
+              {analysis.chunked ? ` · analyzed in ${analysis.chunks} sections` : ''}
+              {analysis.truncated ? ' (truncated for context)' : ''}
             </div>
             <div className="epaper-analysis-body">{analysis.analysis}</div>
             <button className="btn" onClick={exportToCanvas} disabled={exporting}>

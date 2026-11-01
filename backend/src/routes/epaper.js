@@ -51,6 +51,63 @@ async function extractPdfText(buffer) {
   return (data && data.text ? data.text : '').replace(/\r\n/g, '\n').trim();
 }
 
+function chunkText(text, size) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks;
+}
+
+// Map-reduce: analyze each section of a large document, then synthesize one report.
+async function chunkedAnalyze(text, prompt, model, temperature) {
+  const chunks = chunkText(text, 20000);
+  const chunkResults = new Array(chunks.length);
+  const CONCURRENCY = 3;
+  let next = 0;
+
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= chunks.length) break;
+      const messages = [
+        {
+          role: 'system',
+          content: `You are analyzing section ${i + 1} of ${chunks.length} of an e-paper. Extract and report the information relevant to the user's request, concisely but completely.`,
+        },
+        { role: 'user', content: `Request: ${prompt}\n\nSection ${i + 1} text:\n\n${chunks[i]}` },
+      ];
+      const r = await ai.chatCompletion(messages, { model, temperature, maxTokens: 2000 });
+      chunkResults[i] = r.content;
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker())
+  );
+
+  const combined = chunkResults.map((r, i) => `## Section ${i + 1}\n${r}`).join('\n\n');
+
+  const finalMessages = [
+    {
+      role: 'system',
+      content:
+        'You are synthesizing multiple section analyses of the same document into one comprehensive, well-organized final report. Preserve all important facts and points.',
+    },
+    { role: 'user', content: `Original request: ${prompt}\n\nSection analyses:\n\n${combined}` },
+  ];
+  const final = await ai.chatCompletion(finalMessages, { model, temperature, maxTokens: 8000 });
+
+  return {
+    analysis: final.content,
+    extractedLength: text.length,
+    truncated: false,
+    chunked: true,
+    chunks: chunks.length,
+    preview: text.slice(0, 800),
+  };
+}
+
 async function downloadPdf(issue, folder) {
   await ensureLoginClosed();
   const url = `${BASE}/issues/${issue.id}/pagespdffull?download=true`;
@@ -213,32 +270,35 @@ router.post('/analyze', upload.single('file'), async (req, res, next) => {
     if (!text) {
       return res.status(422).json({ error: 'Could not extract text from this PDF (it may be image-only).' });
     }
-    // Keep within DeepSeek's context window.
-    const MAX_CHARS = 100000;
-    const excerpt = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          'You are a UPSC exam preparation assistant. Analyze the provided e-paper text according to the user prompt. ' +
-          'Base your answer only on the provided text and present it clearly.',
-      },
-      { role: 'user', content: `E-paper content:\n\n${excerpt}\n\n---\n\n${prompt.trim()}` },
-    ];
+    const modelName = model || 'deepseek-chat';
+    const temp = temperature !== undefined ? Number(temperature) : 0.3;
 
-    const result = await ai.chatCompletion(messages, {
-      model: model || 'deepseek-chat',
-      temperature: temperature !== undefined ? Number(temperature) : 0.3,
-      maxTokens: 8000,
-    });
+    let result;
+    if (text.length > 40000) {
+      result = await chunkedAnalyze(text, prompt.trim(), modelName, temp);
+    } else {
+      const messages = [
+        {
+          role: 'system',
+          content:
+            'You are a UPSC exam preparation assistant. Analyze the provided e-paper text according to the user prompt. ' +
+            'Base your answer only on the provided text and present it clearly.',
+        },
+        { role: 'user', content: `E-paper content:\n\n${text}\n\n---\n\n${prompt.trim()}` },
+      ];
+      const r = await ai.chatCompletion(messages, { model: modelName, temperature: temp, maxTokens: 8000 });
+      result = {
+        analysis: r.content,
+        extractedLength: text.length,
+        truncated: false,
+        chunked: false,
+        chunks: 1,
+        preview: text.slice(0, 800),
+      };
+    }
 
-    res.json({
-      analysis: result.content,
-      extractedLength: text.length,
-      truncated: text.length > MAX_CHARS,
-      preview: text.slice(0, 800),
-    });
+    res.json(result);
   } catch (e) {
     next(e);
   }

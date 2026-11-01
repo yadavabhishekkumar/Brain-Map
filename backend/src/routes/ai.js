@@ -333,6 +333,44 @@ router.post('/apply', async (req, res, next) => {
   }
 });
 
+function splitIntoSections(text) {
+  const lines = String(text || '').split('\n');
+  const sections = [];
+  let current = null;
+  for (const line of lines) {
+    const m = line.match(/^(#{1,6})\s+(.*)$/);
+    if (m) {
+      current = { level: m[1].length, label: m[2].trim(), lines: [] };
+      sections.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    } else {
+      current = { level: 1, label: 'Summary', lines: [line] };
+      sections.push(current);
+    }
+  }
+  return sections.map((s) => ({ level: s.level, label: s.label, content: s.lines.join('\n').trim() }));
+}
+
+function sectionsToFlat(sections) {
+  const flat = [];
+  const levelIndex = {};
+  for (const sec of sections) {
+    let parentRef = -1;
+    for (let l = sec.level - 1; l >= 1; l--) {
+      if (levelIndex[l] !== undefined) {
+        parentRef = levelIndex[l];
+        break;
+      }
+    }
+    const idx = flat.length;
+    flat.push({ label: sec.label, content: sec.content, parentRef, depth: sec.level });
+    levelIndex[sec.level] = idx;
+    for (let l = sec.level + 1; l <= 6; l++) delete levelIndex[l];
+  }
+  return flat;
+}
+
 // Import plain/markdown text into a new (or existing) canvas as a tree of nodes.
 router.post('/import-text', async (req, res, next) => {
   try {
@@ -362,9 +400,10 @@ router.post('/import-text', async (req, res, next) => {
         '',
       ]);
       const rootId = uuid();
+      // Keep the FULL text in the root node's notes so nothing is lost.
       await pool.query(
-        `INSERT INTO nodes (id, canvas_id, label, content, x, y, depth) VALUES ($1,$2,$3,'',0,0,0)`,
-        [rootId, canvasId, name]
+        `INSERT INTO nodes (id, canvas_id, label, content, x, y, depth) VALUES ($1,$2,$3,$4,0,0,0)`,
+        [rootId, canvasId, name, text.trim()]
       );
       await indexNode(rootId);
       attachParentId = rootId;
@@ -373,10 +412,10 @@ router.post('/import-text', async (req, res, next) => {
       attachDepth = 0;
     }
 
-    const parsed = parseExtractedText(text);
-    if (!parsed.length) return res.status(400).json({ error: 'Could not parse the text into topics.' });
+    const sections = splitIntoSections(text);
+    if (!sections.length) return res.status(400).json({ error: 'Could not parse the text into topics.' });
 
-    const flat = parsedToFlat(parsed);
+    const flat = sectionsToFlat(sections);
     const positions = computePositions(flat);
     const idByIndex = [];
     for (let i = 0; i < flat.length; i++) {
@@ -385,15 +424,16 @@ router.post('/import-text', async (req, res, next) => {
       const id = uuid();
       await pool.query(
         `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
-         VALUES ($1,$2,$3,$4,'',$5,$6,$7)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           id,
           canvasId,
           parentId,
           item.label,
+          item.content,
           attachX + 260 + positions[i].x,
           attachY + positions[i].y,
-          attachDepth + 1 + item.depth,
+          attachDepth + item.depth,
         ]
       );
       idByIndex[i] = id;
