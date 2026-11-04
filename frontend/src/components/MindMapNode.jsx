@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 function MindMapNode({ data, selected, id }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, editMode, onAction, hasHiddenChildren, onExpand } = data;
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, editMode, connectMode, onAction, hasHiddenChildren, onExpand } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -16,7 +16,7 @@ function MindMapNode({ data, selected, id }) {
       className={`mind-node${isRoot ? ' mind-node-root' : ''}${linked_canvas_id ? ' mind-node-link' : ''}${selected ? ' mind-node-selected' : ''}${highlighted ? ' mind-node-child-highlight' : ''}`}
       style={{ padding: `${paddingY}px ${paddingX}px` }}
     >
-      <Handle type="target" position={Position.Left} className="mind-handle" />
+      {!connectMode && <Handle type="target" position={Position.Left} className="mind-handle" />}
       <div className="mind-node-body">
         {linked_canvas_id && (
           <span className="mind-node-link-icon" style={{ fontSize: `${iconFont}px` }} title="Linked canvas">
@@ -37,9 +37,39 @@ function MindMapNode({ data, selected, id }) {
           </span>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="mind-handle" />
+      {!connectMode && <Handle type="source" position={Position.Right} className="mind-handle" />}
 
-      {editMode && (
+      {connectMode && (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="parent-source"
+            className="mind-connect-handle"
+            style={{ left: '50%', top: '50%', right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' }}
+          />
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="parent-target"
+            className="mind-connect-target"
+            style={{
+              left: 0,
+              top: 0,
+              width: '100%',
+              height: '100%',
+              minWidth: '100%',
+              minHeight: '100%',
+              transform: 'none',
+              border: 'none',
+              background: 'transparent',
+              opacity: 0,
+            }}
+          />
+        </>
+      )}
+
+      {editMode && !connectMode && (
         <>
           <button
             className="node-action node-action-right"

@@ -105,6 +105,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [studyMode, setStudyMode] = useState(false);
   const [alignMode, setAlignMode] = useState(false);
   const [alignLines, setAlignLines] = useState([]);
+  const [connectMode, setConnectMode] = useState(false);
   const alignBaselineRef = useRef(null);
   const [revealedParentIds, setRevealedParentIds] = useState(() => new Set());
 
@@ -239,6 +240,44 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [pushUndo, setNodes]
   );
 
+  // Reparent a node under a new parent (undoable) — used by Connect Mode.
+  const stageReparent = useCallback(
+    (childId, newParentId) => {
+      pushUndo();
+      setNodes((nds) => {
+        const child = nds.find((n) => n.id === childId);
+        const parent = nds.find((n) => n.id === newParentId);
+        if (!child || !parent) return nds;
+        const newDepth = parent.data.depth + 1;
+        const depthDelta = newDepth - child.data.depth;
+
+        // Collect the child's subtree so its depths shift together.
+        const subtree = new Set([childId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const n of nds) {
+            if (n.data && n.data.parent_id && subtree.has(n.data.parent_id) && !subtree.has(n.id)) {
+              subtree.add(n.id);
+              changed = true;
+            }
+          }
+        }
+
+        return nds.map((n) => {
+          if (n.id === childId) {
+            return { ...n, data: { ...n.data, parent_id: newParentId, depth: newDepth, isRoot: false } };
+          }
+          if (subtree.has(n.id) && depthDelta !== 0) {
+            return { ...n, data: { ...n.data, depth: Math.max(0, n.data.depth + depthDelta) } };
+          }
+          return n;
+        });
+      });
+    },
+    [pushUndo, setNodes]
+  );
+
   const onNodeAction = useCallback(
     (nodeId, action) => {
       if (!editMode) return;
@@ -287,6 +326,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   const exitEditMode = useCallback(() => {
     setEditMode(false);
+    setConnectMode(false);
     setUndoStack([]);
     setRedoStack([]);
     baselineRef.current = null;
@@ -467,6 +507,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           scale,
           highlighted: hoveredChildIds.has(n.id),
           editMode,
+          connectMode,
           onAction: onNodeAction,
           hasHiddenChildren,
           onExpand: expandChildren,
@@ -475,7 +516,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, onNodeAction, revealedParentIds, expandChildren]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, connectMode, onNodeAction, revealedParentIds, expandChildren]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -532,6 +573,32 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   const handleConnect = useCallback(
     async (connection) => {
+      // Connect Mode: reparent (target becomes a child of source).
+      if (connectMode && connection.sourceHandle === 'parent-source' && connection.targetHandle === 'parent-target') {
+        if (connection.source === connection.target) return;
+        const targetNode = nodes.find((n) => n.id === connection.target);
+        if (targetNode && targetNode.data && targetNode.data.parent_id === connection.source) return;
+        // Reject if source is already a descendant of target (would create a cycle).
+        let cur = connection.source;
+        const seen = new Set();
+        let cycle = false;
+        while (cur) {
+          if (seen.has(cur)) break;
+          seen.add(cur);
+          if (cur === connection.target) {
+            cycle = true;
+            break;
+          }
+          const n = nodes.find((x) => x.id === cur);
+          cur = n && n.data && n.data.parent_id ? n.data.parent_id : null;
+        }
+        if (cycle) {
+          alert('Cannot connect — this would create a cycle.');
+          return;
+        }
+        stageReparent(connection.target, connection.source);
+        return;
+      }
       try {
         const edge = await api.createEdge(canvasId, {
           source_id: connection.source,
@@ -546,7 +613,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         alert(e.message);
       }
     },
-    [canvasId, setEdges]
+    [connectMode, canvasId, setEdges, stageReparent, nodes]
   );
 
   const addFocus = useCallback((id) => {
@@ -853,8 +920,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             maxZoom={2.5}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!studyMode && !alignMode}
-            nodesConnectable={!editMode}
+            nodesDraggable={!studyMode && !alignMode && !connectMode}
+            nodesConnectable={!editMode || connectMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
             <MiniMap
@@ -892,9 +959,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                   <span className="toolbar-hint">Drag between nodes to connect topics</span>
                 </>
               ) : (
-                <span className="toolbar-hint edit-hint">
-                  ✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.
-                </span>
+                <>
+                  <button
+                    className={`btn${connectMode ? ' btn-connect-active' : ''}`}
+                    onClick={() => setConnectMode((v) => !v)}
+                    title="Connect Mode — drag from a node's centre onto another node to make it a child"
+                  >
+                    🔗 {connectMode ? 'Connecting…' : 'Connect Mode'}
+                  </button>
+                  <span className="toolbar-hint edit-hint">
+                    {connectMode
+                      ? "Drag from a node's centre and drop on another node to make it a child."
+                      : '✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.'}
+                  </span>
+                </>
               )}
             </div>
           )}
