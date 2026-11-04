@@ -193,4 +193,112 @@ router.get('/:id/chats', async (req, res, next) => {
   }
 });
 
+// Export a node and its entire subtree to a new, linked canvas.
+router.post('/:id/export', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const node = await pool.query('SELECT * FROM nodes WHERE id=$1', [id]);
+    if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
+    const self = node.rows[0];
+
+    // 1) Collect the subtree (self + descendants) ordered by depth.
+    const subtree = await pool.query(
+      `WITH RECURSIVE sub AS (
+         SELECT id, canvas_id, parent_id, label, content, x, y, depth, metadata, linked_canvas_id
+         FROM nodes WHERE id = $1
+         UNION ALL
+         SELECT n.id, n.canvas_id, n.parent_id, n.label, n.content, n.x, n.y, n.depth, n.metadata, n.linked_canvas_id
+         FROM nodes n JOIN sub s ON n.parent_id = s.id
+       )
+       SELECT * FROM sub ORDER BY depth ASC`,
+      [id]
+    );
+    const rows = subtree.rows;
+    if (!rows.length) return res.status(404).json({ error: 'Node not found' });
+
+    const canvasName = (self.label || 'Exported topic').trim().slice(0, 100) || 'Exported topic';
+    const description = (self.content || '').trim().slice(0, 240);
+
+    // 2) Create the new canvas.
+    const newCanvasId = uuid();
+    await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+      newCanvasId,
+      canvasName,
+      description,
+    ]);
+
+    // 3) Copy the subtree into the new canvas (self becomes the root).
+    const idMap = new Map(); // old node id -> new node id
+    for (const r of rows) {
+      const newId = uuid();
+      idMap.set(r.id, newId);
+      const newParentId = r.parent_id && idMap.has(r.parent_id) ? idMap.get(r.parent_id) : null;
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth, metadata, linked_canvas_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          newId,
+          newCanvasId,
+          newParentId,
+          r.label,
+          r.content || '',
+          r.x - self.x,
+          r.y - self.y,
+          r.depth - self.depth,
+          r.metadata || {},
+          r.id === self.id ? null : r.linked_canvas_id || null,
+        ]
+      );
+    }
+
+    // 4) Move attachments for the whole subtree to the new canvas.
+    const subtreeIds = rows.map((r) => r.id);
+    const atts = await pool.query('SELECT * FROM attachments WHERE node_id = ANY($1::uuid[])', [subtreeIds]);
+    for (const a of atts.rows) {
+      const newNodeId = idMap.get(a.node_id);
+      if (!newNodeId) continue;
+      const ext = (a.storage_key.split('.').pop() || 'png').slice(0, 8);
+      const newKey = `${newCanvasId}/${newNodeId}/${a.id}.${ext}`;
+      try {
+        const buf = await storage.getBuffer(a.storage_key);
+        await storage.put(newKey, buf, a.mime_type);
+        await pool.query(
+          'UPDATE attachments SET node_id=$1, canvas_id=$2, storage_key=$3 WHERE id=$4',
+          [newNodeId, newCanvasId, newKey, a.id]
+        );
+        await storage.remove(a.storage_key);
+      } catch (err) {
+        console.warn('[export] failed to move attachment', a.id, err.message);
+      }
+    }
+
+    // 5) In the current canvas: turn the selected node into a link to the new
+    //    canvas and delete the moved descendants.
+    await pool.query('UPDATE nodes SET linked_canvas_id=$1, updated_at=now() WHERE id=$2', [newCanvasId, id]);
+    const descendantIds = subtreeIds.filter((x) => x !== id);
+    if (descendantIds.length) {
+      await pool.query('DELETE FROM nodes WHERE id = ANY($1::uuid[])', [descendantIds]);
+      for (const did of descendantIds) await es.removeNode(did);
+    }
+    await recomputeDepths(self.canvas_id);
+    await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [self.canvas_id]);
+
+    // 6) Reindex the linked node and the new canvas nodes.
+    await indexNode(id);
+    for (const oldId of subtreeIds) {
+      const newId = idMap.get(oldId);
+      if (newId) await indexNode(newId);
+    }
+
+    res.json({
+      canvas_id: newCanvasId,
+      canvas_name: canvasName,
+      linked_node_id: id,
+      moved_count: rows.length,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
