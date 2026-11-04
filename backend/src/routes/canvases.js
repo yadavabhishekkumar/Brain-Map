@@ -12,7 +12,9 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
-              (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count
+              (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count,
+              (SELECT count(*)::int FROM attachments a WHERE a.canvas_id = c.id) AS attachment_count,
+              (SELECT n.canvas_id FROM nodes n WHERE n.linked_canvas_id = c.id LIMIT 1) AS linked_from_canvas_id
        FROM canvases c
        ORDER BY c.updated_at DESC`
     );

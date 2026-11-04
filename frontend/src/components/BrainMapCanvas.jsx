@@ -714,18 +714,23 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     }, 220);
   }, []);
 
-  // Double click -> editable side panel.
+  // Double click -> open linked canvas, else editable side panel.
   const handleNodeDoubleClick = useCallback(
     (e, node) => {
       clearTimeout(clickTimer.current);
       setPreviewNodeId(null);
+      const d = node.data || {};
+      if (d.linked_canvas_id) {
+        onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
+        return;
+      }
       setSelectedNodeId(node.id);
       // Default panel width depends on where the node sits on screen.
       const sx = node.position.x * zoom + viewport.x;
       const available = window.innerWidth - sx - 60;
       setPanelWidth(Math.max(280, Math.min(520, available)));
     },
-    [zoom, viewport.x]
+    [zoom, viewport.x, onOpenCanvas]
   );
 
   useEffect(() => {

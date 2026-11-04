@@ -394,6 +394,9 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
               <button className="btn btn-sm btn-primary" onClick={() => applyAnswer('map')} disabled={applyingAnswer}>
                 🗺️ Create a map from this
               </button>
+              <button className="btn btn-sm" onClick={() => applyAnswer('canvas')} disabled={applyingAnswer}>
+                🔗 Create map in a new canvas &amp; link
+              </button>
             </div>
           )}
           {pendingApply === 'notes' && (

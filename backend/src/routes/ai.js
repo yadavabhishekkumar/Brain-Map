@@ -230,7 +230,7 @@ function buildSeparator(author) {
   return `\n\n---\n${ts} · ${author}\n\n`;
 }
 
-// POST /api/ai/apply  { node_id, text, action: 'notes' | 'child' | 'map' }
+// POST /api/ai/apply  { node_id, text, action: 'notes' | 'child' | 'map' | 'canvas' }
 // Applies an AI answer into the brain map.
 router.post('/apply', async (req, res, next) => {
   try {
@@ -315,6 +315,80 @@ router.post('/apply', async (req, res, next) => {
       }
       await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [rootNode.canvas_id]);
       return res.json({ action: 'map', applied: true, created_count: flat.length });
+    }
+
+    if (action === 'canvas') {
+      const parsed = parseExtractedText(text);
+      if (!parsed.length) {
+        return res.status(400).json({ error: 'Could not parse the response into topics.' });
+      }
+
+      // Derive a readable name + short description for the new canvas.
+      const rawLines = String(text || '')
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const canvasName =
+        (rawLines[0] || '')
+          .replace(/^#{1,6}\s*/, '')
+          .replace(/^[-*•▪◦▫]\s*/, '')
+          .replace(/^\d{1,2}[.)]\s*/, '')
+          .trim()
+          .slice(0, 100) || `${rootNode.label} — Map`;
+      const description = rawLines.slice(0, 3).join(' ').slice(0, 240);
+
+      // 1) Create the new canvas and populate it with the parsed map.
+      const newCanvasId = uuid();
+      await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+        newCanvasId,
+        canvasName,
+        description,
+      ]);
+
+      const flat = parsedToFlat(parsed);
+      const positions = computePositions(flat);
+      const idByIndex = [];
+      for (let i = 0; i < flat.length; i++) {
+        const item = flat[i];
+        const parentId = item.parentRef >= 0 ? idByIndex[item.parentRef] : null;
+        const id = uuid();
+        await pool.query(
+          `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
+           VALUES ($1,$2,$3,$4,'',$5,$6,$7)`,
+          [id, newCanvasId, parentId, item.label, positions[i].x, positions[i].y, item.depth]
+        );
+        idByIndex[i] = id;
+        await indexNode(id);
+      }
+
+      // 2) Link the new canvas back to the current topic via a child node.
+      const childCount = await pool.query('SELECT count(*)::int AS c FROM nodes WHERE parent_id=$1', [node_id]);
+      const linkId = uuid();
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth, linked_canvas_id)
+         VALUES ($1,$2,$3,$4,'',$5,$6,$7,$8)`,
+        [
+          linkId,
+          rootNode.canvas_id,
+          node_id,
+          canvasName,
+          rootNode.x + 260,
+          rootNode.y + childCount.rows[0].c * 90,
+          rootNode.depth + 1,
+          newCanvasId,
+        ]
+      );
+      await indexNode(linkId);
+      await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [rootNode.canvas_id]);
+
+      return res.json({
+        action: 'canvas',
+        applied: true,
+        canvas_id: newCanvasId,
+        canvas_name: canvasName,
+        node_id: linkId,
+        created_count: flat.length,
+      });
     }
 
     return res.status(400).json({ error: 'Invalid action' });

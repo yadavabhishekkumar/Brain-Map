@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 
 export default function CanvasList({ onOpen, onOpenEpaper }) {
@@ -46,6 +46,69 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
     }
   };
 
+  // Build a parent/child tree from linked canvases so related canvases nest.
+  const { childrenMap, roots } = useMemo(() => {
+    const byId = new Map(canvases.map((c) => [c.id, c]));
+    const childrenMap = new Map();
+    const roots = [];
+    for (const c of canvases) {
+      const parentId =
+        c.linked_from_canvas_id && byId.has(c.linked_from_canvas_id) ? c.linked_from_canvas_id : null;
+      if (parentId) {
+        if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+        childrenMap.get(parentId).push(c);
+      } else {
+        roots.push(c);
+      }
+    }
+    return { childrenMap, roots };
+  }, [canvases]);
+
+  const formatDate = (iso) => {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const renderRow = (canvas, depth) => {
+    const kids = childrenMap.get(canvas.id) || [];
+    const related = depth > 0;
+    const size =
+      `${canvas.node_count} topic${canvas.node_count === 1 ? '' : 's'}` +
+      (canvas.attachment_count ? ` · ${canvas.attachment_count} 📎` : '');
+    return (
+      <div key={canvas.id}>
+        <div className={`canvas-row${related ? ' canvas-row-related' : ''}`}>
+          <div className="canvas-row-name-cell" style={{ paddingLeft: depth * 28 }}>
+            <div className="canvas-row-title">
+              {related && <span className="canvas-row-connector">↳</span>}
+              <span className="canvas-row-name" onClick={() => onOpen(canvas.id, canvas.name)}>
+                {canvas.name}
+              </span>
+              {related && (
+                <span className="canvas-link-badge" title="Linked from another canvas">
+                  🔗 linked
+                </span>
+              )}
+            </div>
+            <div className="canvas-row-desc">{canvas.description ? canvas.description : 'No description'}</div>
+          </div>
+          <span className="canvas-row-size">{size}</span>
+          <span className="canvas-row-date">{formatDate(canvas.updated_at)}</span>
+          <div className="canvas-row-actions">
+            <button className="btn btn-sm" onClick={() => onOpen(canvas.id, canvas.name)}>
+              Open
+            </button>
+            <button className="btn btn-sm btn-danger" onClick={() => remove(canvas.id)}>
+              Delete
+            </button>
+          </div>
+        </div>
+        {kids.map((k) => renderRow(k, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <div className="canvas-list-page">
       <div className="hero">
@@ -81,41 +144,21 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
         </button>
       </div>
 
-      <div className="canvas-grid">
-        {loading && <div className="muted">Loading canvases…</div>}
-        {!loading && canvases.length === 0 && (
-          <div className="empty">No canvases yet. Create your first blank canvas above.</div>
-        )}
-        {canvases.map((c) => (
-          <div key={c.id} className="canvas-card" onClick={() => onOpen(c.id, c.name)}>
-            <div className="canvas-card-title">{c.name}</div>
-            <div className="canvas-card-meta">
-              {c.node_count} topic{c.node_count === 1 ? '' : 's'} ·{' '}
-              {new Date(c.updated_at).toLocaleDateString()}
-            </div>
-            <div className="canvas-card-actions">
-              <button
-                className="btn btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpen(c.id, c.name);
-                }}
-              >
-                Open
-              </button>
-              <button
-                className="btn btn-sm btn-danger"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  remove(c.id);
-                }}
-              >
-                Delete
-              </button>
-            </div>
+      {loading ? (
+        <div className="muted">Loading canvases…</div>
+      ) : canvases.length === 0 ? (
+        <div className="empty">No canvases yet. Create your first blank canvas above.</div>
+      ) : (
+        <div className="canvas-list">
+          <div className="canvas-list-header">
+            <span>Canvas</span>
+            <span>Size</span>
+            <span>Modified</span>
+            <span></span>
           </div>
-        ))}
-      </div>
+          {roots.map((c) => renderRow(c, 0))}
+        </div>
+      )}
     </div>
   );
 }
