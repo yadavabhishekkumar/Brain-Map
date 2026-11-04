@@ -922,6 +922,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               left={previewStyle.left}
               top={previewStyle.top}
               onClose={closePanels}
+              onEdit={() => handleNodeDoubleClick(null, previewNode)}
             />
           )}
         </div>

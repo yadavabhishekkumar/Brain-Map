@@ -1,0 +1,61 @@
+# Render Blueprint — UPSC Brain Map
+#
+# Deploys the app as ONE web service (Express API + built React frontend)
+# plus ONE managed PostgreSQL database.
+#
+# Deploy: connect this repo at https://dashboard.render.com/blueprints/new
+#
+# Notes:
+# - Elasticsearch is OPTIONAL. Search transparently falls back to Postgres
+#   ILIKE when ES is unreachable. To enable it, set ES_URL to a hosted cluster
+#   (e.g. Elastic Cloud, Bonsai).
+# - Uploaded screenshots are stored on the local filesystem, which is ephemeral
+#   on the free plan (wiped on every redeploy). See the commented options below
+#   for persisting them.
+
+version: "1"
+
+services:
+  - type: web
+    name: upsc-brainmap
+    runtime: node
+    rootDir: backend
+    plan: free
+    # Build the frontend into frontend/dist (served by Express) during deploy.
+    buildCommand: npm install && cd ../frontend && npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: upsc-db
+          property: connectionString
+      - key: STORAGE_BACKEND
+        value: local
+      # Secrets — paste these in the Render dashboard when prompted:
+      # - DEEPSEEK_API_KEY powers AI Q&A + AI map generation.
+      # - OPENAI_API_KEY powers note-text extraction (falls back to local OCR).
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # Optional: hosted Elasticsearch for full-text search.
+      # - key: ES_URL
+      #   value: https://your-es-cluster:9200
+      # Optional: persist screenshots on a Render persistent disk (paid plan).
+      # - key: STORAGE_LOCAL_DIR
+      #   value: /var/data/storage
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 5
+
+databases:
+  - name: upsc-db
+    plan: free
+    databaseName: upsc
+    user: upsc

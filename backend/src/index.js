@@ -4,6 +4,8 @@ const config = require('./config');
 const { initSchema } = require('./db');
 const es = require('./es');
 const storage = require('./storage');
+const path = require('path');
+const fs = require('fs');
 
 async function main() {
   await initSchema();
@@ -29,6 +31,24 @@ async function main() {
   app.use('/api/search', require('./routes/search'));
   app.use('/api/ai', require('./routes/ai'));
   app.use('/api/epaper', require('./routes/epaper'));
+
+  // --- Serve the built frontend (single-service production deployment) ---
+  // During a Render deploy the Vite frontend is built into frontend/dist, and
+  // we serve it here so the API and UI share a single URL. Running `npm start`
+  // locally without a build simply skips this block and keeps using the Vite
+  // dev server on :5173.
+  const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    // SPA fallback: any non-API route returns index.html for client-side nav.
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+    console.log(`[web] serving frontend from ${frontendDist}`);
+  }
 
   app.use((err, req, res, next) => {
     console.error('[error]', err);

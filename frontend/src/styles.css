@@ -14,6 +14,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -32,6 +33,7 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 input,
@@ -195,8 +197,10 @@ select {
 /* ---------- Canvas shell ---------- */
 .canvas-shell {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: none;
 }
 
 .canvas-topbar {
@@ -1493,5 +1497,209 @@ mark {
   line-height: 1.6;
   max-height: 480px;
   overflow-y: auto;
+}
+
+/* ---------- Node preview actions (mobile: tap → Edit) ---------- */
+.node-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.node-preview-edit {
+  white-space: nowrap;
+}
+
+.node-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Zoom control: reveal on hover (desktop) or tap (touch) ---------- */
+.zoom-slider-wrap {
+  display: none;
+}
+
+.zoom-control:hover .zoom-slider-wrap,
+.zoom-slider-wrap.open {
+  display: flex;
+}
+
+/* ============================================================
+   Mobile / touch-friendly overrides
+   ============================================================ */
+
+@media (max-width: 768px) {
+  /* Canvas list page */
+  .canvas-list-page {
+    padding: 24px 14px;
+  }
+
+  .hero h1 {
+    font-size: 30px;
+  }
+
+  .hero-sub {
+    font-size: 15px;
+    padding: 0 6px;
+  }
+
+  .create-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .create-row .btn-lg {
+    width: 100%;
+  }
+
+  .epaper-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .canvas-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Canvas topbar: title and action buttons wrap onto their own rows */
+  .canvas-topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .canvas-title {
+    flex: 1 1 auto;
+    text-align: left;
+    font-size: 15px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .topbar-actions .btn {
+    flex: 1 1 auto;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* Node editor becomes a full-screen sheet */
+  .node-editor {
+    position: fixed;
+    inset: 0;
+    width: 100% !important;
+    z-index: 60;
+    border-left: none;
+  }
+
+  .resize-handle {
+    display: none;
+  }
+
+  /* Bottom toolbar: full width, hide the hint text */
+  .canvas-toolbar {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    transform: none;
+    justify-content: center;
+  }
+
+  .canvas-toolbar .btn {
+    flex: 1 1 auto;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .toolbar-hint {
+    display: none;
+  }
+
+  /* Hide the minimap to free up space */
+  .react-flow__minimap {
+    display: none;
+  }
+
+  /* Search overlay spans the width */
+  .search-overlay {
+    width: calc(100% - 20px);
+    top: 10px;
+  }
+
+  /* AI build panel spans the width */
+  .ai-panel {
+    left: 10px;
+    right: 10px;
+    width: auto;
+  }
+
+  /* Node preview fills the width */
+  .node-preview {
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
+
+  /* Focus bar wraps and its search input gets its own row */
+  .focus-bar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .focus-search {
+    flex: 1 1 100%;
+    max-width: none;
+    order: 10;
+  }
+
+  /* Zoom control sits above the bottom toolbar */
+  .zoom-control {
+    left: 10px;
+    bottom: 76px;
+  }
+
+  /* E-paper page */
+  .epaper-page {
+    padding: 20px 14px;
+  }
+
+  .epaper-hero h1 {
+    font-size: 24px;
+  }
+
+  .epaper-control {
+    flex: 1 1 100%;
+  }
+}
+
+/* Touch devices (phones/tablets) */
+@media (hover: none) {
+  /* Larger tap targets */
+  .btn {
+    min-height: 40px;
+  }
+
+  /* Edit-mode action buttons have no hover, so keep them visible */
+  .node-action {
+    opacity: 1;
+    pointer-events: auto;
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
 }
 

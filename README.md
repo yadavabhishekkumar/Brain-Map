@@ -132,3 +132,36 @@ Open http://localhost:5173 — create a canvas and start mapping the syllabus.
 - Screenshots are stored on local disk by default (`STORAGE_BACKEND=local`, under `backend/storage/`).
 - To use MinIO instead, run `docker compose --profile minio up -d` once your network allows
   pulling the MinIO image, then set `STORAGE_BACKEND=minio` in `backend/.env`.
+
+## Deploying to Render
+
+The repo includes a [`render.yaml`](./render.yaml) Blueprint that deploys the whole app
+as **one web service** (Express API + built React frontend) plus a **managed PostgreSQL**
+database.
+
+1. Push this repo to GitHub.
+2. Go to <https://dashboard.render.com/blueprints/new>, connect the repo, and create the
+   Blueprint. Render provisions the Postgres DB and the web service automatically.
+3. When prompted for secrets, paste your keys:
+   - `DEEPSEEK_API_KEY` — powers AI Q&A and AI map generation.
+   - `OPENAI_API_KEY` — powers note-text extraction (otherwise it falls back to local
+     OCR via tesseract.js).
+4. Open the `onrender.com` URL Render gives you.
+
+### What the Blueprint does
+
+- **One service:** the backend builds the frontend (`frontend/dist`) during deploy and
+  serves it, so the API and UI share a single URL. No CORS or separate frontend host.
+- **Postgres:** the schema is created automatically on first start.
+- **Elasticsearch is optional:** search transparently falls back to Postgres `ILIKE`
+  when ES is unreachable. To enable full-text search, add an `ES_URL` env var pointing
+  at a hosted ES cluster (e.g. Elastic Cloud, Bonsai).
+
+### Caveats on the free plan
+
+- **Screenshots are ephemeral.** Local storage is wiped on every redeploy. To persist
+  them, either (a) attach a Render **persistent disk** (paid plan) and set
+  `STORAGE_LOCAL_DIR=/var/data/storage`, or (b) use an S3-compatible store
+  (`STORAGE_BACKEND=minio` + `MINIO_*` vars).
+- **The e-paper downloader** (`playwright-core` + Chrome) targets a local Chrome install
+  and isn't set up for the Render Linux environment; the rest of the app works normally.
