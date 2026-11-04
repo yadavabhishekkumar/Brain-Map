@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { uuid, parseExtractedText } = require('../util');
 const { indexNode } = require('../services/indexer');
 const ai = require('../ai');
+const { parseTree } = require('../jsonParse');
 
 const router = express.Router();
 
@@ -71,21 +72,10 @@ const BUILD_SYSTEM =
   'in exactly this shape:\n' +
   '{"root":{"label":"string","content":"string","children":[{"label":"string","content":"string","children":[]}]}}\n' +
   'Rules: "label" is a concise topic title (max 10 words); "content" is a 1-3 sentence summary or key ' +
-  'points and may be an empty string; use "children" for sub-topics; keep maximum depth 6 and maximum ' +
-  '40 total nodes; the root label should reflect the overall theme.';
-
-function stripFences(text) {
-  let t = String(text || '').trim();
-  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-  return t.trim();
-}
-
-function parseTree(content) {
-  const data = JSON.parse(stripFences(content));
-  const root = data && data.root ? data.root : data;
-  if (!root || typeof root !== 'object') throw new Error('unexpected structure');
-  return root;
-}
+  'points and may be an empty string; use "children" for sub-topics; keep maximum depth 8 and maximum ' +
+  '100 total nodes; the root label should reflect the overall theme. The response MUST be one complete, ' +
+  'valid JSON object — never truncate mid-object. If the subject is too large to cover fully, include ' +
+  'the most important topics rather than cutting the JSON off.';
 
 // Flatten a nested tree into [{label, content, parentRef, depth}] (parentRef = index in list, -1 = root)
 function flatten(root, list = [], parentRef = -1, depth = 0) {
@@ -165,7 +155,7 @@ router.post('/build', async (req, res, next) => {
       { role: 'user', content: `User request:\n${prompt.trim()}` },
     ];
     const { content } = await ai.chatCompletion(messages, {
-      maxTokens: 4000,
+      maxTokens: 12000,
       temperature: 0.2,
       json: true,
     });
