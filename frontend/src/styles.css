@@ -1822,3 +1822,23 @@ mark {
   }
 }
 
+/* ---------- Connect Mode ---------- */
+.mind-connect-handle {
+  width: 14px !important;
+  height: 14px !important;
+  background: var(--primary) !important;
+  border: 2px solid #fff !important;
+  box-shadow: 0 0 0 2px var(--primary);
+  z-index: 10;
+}
+
+.mind-connect-target {
+  z-index: 9;
+}
+
+.btn-connect-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
