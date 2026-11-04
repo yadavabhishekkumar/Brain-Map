@@ -1,7 +1,7 @@
 # Render Blueprint — UPSC Brain Map
 #
 # Deploys the app as ONE web service (Express API + built React frontend)
-# plus ONE managed PostgreSQL database.
+# connected to a Neon Postgres database (free tier) via DATABASE_URL.
 #
 # Deploy: connect this repo at https://dashboard.render.com/blueprints/new
 #
@@ -30,10 +30,12 @@ services:
         value: "20.18.0"
       - key: SKIP_INSTALL_DEPS
         value: "true"
+      # Neon (free) Postgres connection string. Paste it in the Render dashboard
+      # when prompted for this secret. It looks like:
+      #   postgresql://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require
+      # (Keep the trailing ?sslmode=require — the app enables TLS automatically.)
       - key: DATABASE_URL
-        fromDatabase:
-          name: upsc-db
-          property: connectionString
+        sync: false
       - key: STORAGE_BACKEND
         value: local
       # Secrets — paste these in the Render dashboard when prompted:
@@ -54,8 +56,12 @@ services:
     #   mountPath: /var/data
     #   sizeGB: 5
 
-databases:
-  - name: upsc-db
-    plan: free
-    databaseName: upsc
-    user: upsc
+# This app uses an external Neon Postgres database (free tier), so there is no
+# managed Render database. If you'd rather use Render's managed Postgres instead,
+# swap the DATABASE_URL secret above for a fromDatabase reference and uncomment:
+#
+# databases:
+#   - name: upsc-db
+#     plan: free
+#     databaseName: upsc
+#     user: upsc

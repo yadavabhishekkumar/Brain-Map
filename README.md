@@ -136,13 +136,26 @@ Open http://localhost:5173 — create a canvas and start mapping the syllabus.
 ## Deploying to Render
 
 The repo includes a [`render.yaml`](./render.yaml) Blueprint that deploys the whole app
-as **one web service** (Express API + built React frontend) plus a **managed PostgreSQL**
-database.
+as **one web service** (Express API + built React frontend), connected to a **Neon
+Postgres** database (free tier — no 30-day expiry).
+
+### 1. Create a free Neon database
+
+1. Go to <https://neon.tech> and create a free account and project.
+2. Copy the **connection string** from the "Connect" panel. It looks like:
+   ```
+   postgresql://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require
+   ```
+   Keep the trailing `?sslmode=require` — the app enables TLS automatically when it
+   sees it.
+
+### 2. Deploy on Render
 
 1. Push this repo to GitHub.
 2. Go to <https://dashboard.render.com/blueprints/new>, connect the repo, and create the
-   Blueprint. Render provisions the Postgres DB and the web service automatically.
-3. When prompted for secrets, paste your keys:
+   Blueprint.
+3. When prompted for secrets, paste:
+   - `DATABASE_URL` — your Neon connection string from above.
    - `DEEPSEEK_API_KEY` — powers AI Q&A and AI map generation.
    - `OPENAI_API_KEY` — powers note-text extraction (otherwise it falls back to local
      OCR via tesseract.js).
@@ -152,16 +165,19 @@ database.
 
 - **One service:** the backend builds the frontend (`frontend/dist`) during deploy and
   serves it, so the API and UI share a single URL. No CORS or separate frontend host.
-- **Postgres:** the schema is created automatically on first start.
+- **Postgres:** the schema is created automatically on first start (the Neon DB starts
+  empty; the app creates its tables).
 - **Elasticsearch is optional:** search transparently falls back to Postgres `ILIKE`
   when ES is unreachable. To enable full-text search, add an `ES_URL` env var pointing
   at a hosted ES cluster (e.g. Elastic Cloud, Bonsai).
 
-### Caveats on the free plan
+### Caveats
 
 - **Screenshots are ephemeral.** Local storage is wiped on every redeploy. To persist
   them, either (a) attach a Render **persistent disk** (paid plan) and set
   `STORAGE_LOCAL_DIR=/var/data/storage`, or (b) use an S3-compatible store
   (`STORAGE_BACKEND=minio` + `MINIO_*` vars).
+- **Neon free tier** may briefly pause an idle database and resume on the next request
+  (the app reconnects automatically); your data is never deleted.
 - **The e-paper downloader** (`playwright-core` + Chrome) targets a local Chrome install
   and isn't set up for the Render Linux environment; the rest of the app works normally.
