@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { renderMarkdown } from '../markdown';
+import MicButton from './MicButton';
 
 export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
@@ -320,7 +321,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
         <input value={label} onChange={(e) => setLabel(e.target.value)} />
 
         <label>Notes / content</label>
-        <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} />
+        <div className="voice-field">
+          <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} />
+          <MicButton onText={(t) => setContent((v) => (v ? v + ' ' + t : t))} />
+        </div>
 
         {node.linked_canvas_id && (
           <div className="linked-canvas-box">
@@ -430,12 +434,15 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
 
         <h4>🤖 Ask AI about this topic</h4>
         <div className="ai-ask">
-          <textarea
-            rows={2}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask a question (context = this topic + its parent topics)"
-          />
+          <div className="voice-field">
+            <textarea
+              rows={2}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ask a question (context = this topic + its parent topics)"
+            />
+            <MicButton onText={(t) => setQuestion((v) => (v ? v + ' ' + t : t))} />
+          </div>
           <button className="btn btn-primary" onClick={ask} disabled={asking || !question.trim()}>
             {asking ? 'Thinking…' : 'Ask AI'}
           </button>

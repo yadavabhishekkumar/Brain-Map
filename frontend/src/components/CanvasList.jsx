@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import MicButton from './MicButton';
 
 export default function CanvasList({ onOpen, onOpenEpaper }) {
   const [canvases, setCanvases] = useState([]);
@@ -118,12 +119,15 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
           their text with AI, and search everything instantly.
         </p>
         <div className="create-row">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-            placeholder="Canvas name (e.g. Polity, History, Geography)"
-          />
+          <div className="voice-field">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && create()}
+              placeholder="Canvas name (e.g. Polity, History, Geography)"
+            />
+            <MicButton onText={(t) => setName((v) => (v ? v + ' ' + t : t))} />
+          </div>
           <button
             className="btn btn-primary btn-lg"
             onClick={create}
