@@ -594,6 +594,46 @@ async function recomputeDepths(canvasId) {
   );
 }
 
+// Re-layout the whole canvas into a clean left-to-right tree.
+async function relayoutCanvas(canvasId) {
+  const { rows } = await pool.query(
+    `SELECT id, parent_id, x, y FROM nodes WHERE canvas_id = $1`,
+    [canvasId]
+  );
+  if (!rows.length) return;
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const children = new Map();
+  const roots = [];
+  for (const r of rows) {
+    if (r.parent_id && byId.has(r.parent_id)) {
+      if (!children.has(r.parent_id)) children.set(r.parent_id, []);
+      children.get(r.parent_id).push(r);
+    } else {
+      roots.push(r);
+    }
+  }
+  children.forEach((v) => v.sort((a, b) => a.y - b.y));
+  roots.sort((a, b) => a.y - b.y);
+
+  const flat = [];
+  const walk = (node, parentRef) => {
+    const idx = flat.length;
+    flat.push({ id: node.id, parentRef });
+    for (const k of children.get(node.id) || []) walk(k, idx);
+  };
+  for (const r of roots) walk(r, -1);
+
+  const positions = computePositions(flat);
+  for (let i = 0; i < flat.length; i++) {
+    await pool.query('UPDATE nodes SET x=$1, y=$2 WHERE id=$3', [
+      positions[i].x,
+      positions[i].y,
+      flat[i].id,
+    ]);
+  }
+}
+
 // POST /api/ai/rearrange  { node_id, prompt?, mode: 'keep' | 'modify', model? }
 // Rearranges a node's child subtree using AI, based on titles + descriptions.
 router.post('/rearrange', async (req, res, next) => {
@@ -668,6 +708,7 @@ router.post('/rearrange', async (req, res, next) => {
         updated++;
       }
       await recomputeDepths(a.canvas_id);
+      await relayoutCanvas(a.canvas_id);
       await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [a.canvas_id]);
       return res.json({ action: 'rearrange', mode: 'keep', applied: true, rearranged: updated });
     }
@@ -728,6 +769,7 @@ router.post('/rearrange', async (req, res, next) => {
       await indexNode(id);
     }
     await recomputeDepths(a.canvas_id);
+    await relayoutCanvas(a.canvas_id);
     await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [a.canvas_id]);
     return res.json({ action: 'rearrange', mode: 'modify', applied: true, created_count: created });
   } catch (e) {
