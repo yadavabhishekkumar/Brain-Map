@@ -4,6 +4,8 @@ const { uuid, parseExtractedText } = require('../util');
 const { indexNode } = require('../services/indexer');
 const ai = require('../ai');
 const { parseTree } = require('../jsonParse');
+const storage = require('../storage');
+const es = require('../es');
 
 const router = express.Router();
 
@@ -89,6 +91,31 @@ const MAP_FROM_ANSWER_SYSTEM =
   '- Turn the answer\'s main idea into "root"; turn each top-level bullet/sub-topic into a child node; ' +
   'turn nested bullets into nested children.\n' +
   '- Keep maximum depth 6 and maximum 40 nodes. Respond with one complete, valid JSON object.';
+
+const REARRANGE_KEEP_SYSTEM =
+  'You are an expert UPSC mind-map organizer. You are given a list of topic nodes (each with a ref id, ' +
+  'title, and description). Rearrange them into a clearer hierarchy based ONLY on the relationships between ' +
+  'their titles and descriptions. KEEP every node\'s title and description EXACTLY unchanged — you may ONLY ' +
+  'change parent-child relationships. Respond with ONLY a valid JSON object (no markdown fences, no extra ' +
+  'text) in exactly this shape:\n' +
+  '{"root":{"ref":"string","children":[{"ref":"string","children":[]}]}}\n' +
+  'where each "ref" is the exact ref id (e.g. n0, n1) of a node from the provided list. Every provided node ' +
+  'must appear exactly once. If nodes are independent, place them as parallel siblings; if one is a sub-topic ' +
+  'of another, nest it as a child.';
+
+const REARRANGE_MODIFY_SYSTEM =
+  'You are an expert UPSC mind-map organizer and editor. You are given a list of topic nodes (title and ' +
+  'description). Rearrange them into a clearer hierarchy AND enrich/improve each node\'s title and description ' +
+  'to be more accurate and useful for UPSC preparation. Respond with ONLY a valid JSON object (no markdown ' +
+  'fences, no extra text) in exactly this shape:\n' +
+  '{"root":{"label":"string","content":"string","children":[{"label":"string","content":"string","children":[]}]}}\n' +
+  'where "label" is a concise title and "content" is a description/notes. Cover every topic from the input. ' +
+  'If topics are independent, make them parallel siblings; if one is a sub-topic of another, nest it as a child.';
+
+const DEFAULT_REARRANGE_PROMPT =
+  'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes ' +
+  'and description, Connect them based on their relationship. If they are independent, then should exist ' +
+  'parallel to each other. If they are somehow connected then connect them sequentially.';
 
 // Use the AI itself to turn an answer into a structured map tree.
 async function generateMapTree(text, provider) {
@@ -548,6 +575,161 @@ router.post('/import-text', async (req, res, next) => {
     await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [canvasId]);
 
     res.json({ canvas_id: canvasId, created_count: flat.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Recompute depth for every node of a canvas (recursive CTE from roots).
+async function recomputeDepths(canvasId) {
+  await pool.query(
+    `WITH RECURSIVE tree AS (
+       SELECT id, 0 AS d FROM nodes WHERE canvas_id = $1 AND parent_id IS NULL
+       UNION ALL
+       SELECT n.id, tree.d + 1 FROM nodes n JOIN tree ON n.parent_id = tree.id
+     )
+     UPDATE nodes SET depth = tree.d, updated_at = now()
+     FROM tree WHERE nodes.id = tree.id AND nodes.canvas_id = $1`,
+    [canvasId]
+  );
+}
+
+// POST /api/ai/rearrange  { node_id, prompt?, mode: 'keep' | 'modify', model? }
+// Rearranges a node's child subtree using AI, based on titles + descriptions.
+router.post('/rearrange', async (req, res, next) => {
+  try {
+    const { node_id, prompt, mode, model } = req.body || {};
+    if (!node_id) return res.status(400).json({ error: 'node_id is required' });
+    const keep = mode !== 'modify';
+
+    const anchor = await pool.query('SELECT * FROM nodes WHERE id=$1', [node_id]);
+    if (!anchor.rows[0]) return res.status(404).json({ error: 'Node not found' });
+    const a = anchor.rows[0];
+
+    // Load all descendants of the anchor node.
+    const desc = await pool.query(
+      `WITH RECURSIVE sub AS (
+         SELECT id, parent_id, label, content, depth FROM nodes WHERE parent_id = $1
+         UNION ALL
+         SELECT n.id, n.parent_id, n.label, n.content, n.depth
+         FROM nodes n JOIN sub s ON n.parent_id = s.id
+       ) SELECT id, parent_id, label, content, depth FROM sub`,
+      [node_id]
+    );
+    const nodes = desc.rows;
+    if (!nodes.length) {
+      return res.status(400).json({ error: 'This topic has no child nodes to rearrange.' });
+    }
+
+    const refToId = {};
+    const list = nodes.map((n, i) => {
+      const ref = `n${i}`;
+      refToId[ref] = n.id;
+      return { ref, title: n.label, description: n.content || '' };
+    });
+
+    const promptText = (prompt && prompt.trim()) || DEFAULT_REARRANGE_PROMPT;
+    const userContent =
+      'User instruction:\n' +
+      promptText +
+      '\n\nNodes:\n' +
+      list.map((n) => `- ${n.ref}: title="${n.title}" description="${n.description}"`).join('\n');
+
+    const messages = [
+      { role: 'system', content: keep ? REARRANGE_KEEP_SYSTEM : REARRANGE_MODIFY_SYSTEM },
+      { role: 'user', content: userContent },
+    ];
+
+    const { content } = await ai.chatCompletion(messages, {
+      provider: model,
+      maxTokens: 8000,
+      json: true,
+    });
+
+    const tree = parseTree(content);
+
+    if (keep) {
+      // tree = { ref, children } — re-parent the existing nodes only.
+      const pairs = [];
+      const walk = (root, parentRef) => {
+        pairs.push({ ref: root.ref, parentRef });
+        for (const child of Array.isArray(root.children) ? root.children : []) {
+          if (child && typeof child === 'object') walk(child, root.ref);
+        }
+      };
+      walk(tree, null);
+
+      let updated = 0;
+      for (const p of pairs) {
+        const id = refToId[p.ref];
+        if (!id) continue;
+        const parentId = p.parentRef && refToId[p.parentRef] ? refToId[p.parentRef] : node_id;
+        await pool.query('UPDATE nodes SET parent_id=$1, updated_at=now() WHERE id=$2', [parentId, id]);
+        updated++;
+      }
+      await recomputeDepths(a.canvas_id);
+      await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [a.canvas_id]);
+      return res.json({ action: 'rearrange', mode: 'keep', applied: true, rearranged: updated });
+    }
+
+    // modify mode: delete the old subtree and recreate it from the enriched tree.
+    const subtreeCte = `WITH RECURSIVE sub AS (
+       SELECT id FROM nodes WHERE parent_id = $1
+       UNION ALL
+       SELECT n.id FROM nodes n JOIN sub s ON n.parent_id = s.id
+     ) SELECT id FROM sub`;
+
+    const att = await pool.query(
+      `SELECT a.storage_key FROM attachments a WHERE a.node_id IN (${subtreeCte})`,
+      [node_id]
+    );
+    const ids = await pool.query(subtreeCte, [node_id]);
+
+    await pool.query(`DELETE FROM nodes WHERE id IN (${subtreeCte})`, [node_id]);
+    for (const r of att.rows) {
+      try {
+        await storage.remove(r.storage_key);
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    }
+    for (const r of ids.rows) {
+      try {
+        await es.removeNode(r.id);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    const flat = flatten(tree);
+    const positions = computePositions(flat);
+    const idByIndex = [];
+    let created = 0;
+    for (let i = 0; i < flat.length; i++) {
+      const item = flat[i];
+      const parentId = item.parentRef >= 0 ? idByIndex[item.parentRef] : node_id;
+      const id = uuid();
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          id,
+          a.canvas_id,
+          parentId,
+          item.label,
+          item.content,
+          a.x + 260 + positions[i].x,
+          a.y + positions[i].y,
+          a.depth + 1 + item.depth,
+        ]
+      );
+      idByIndex[i] = id;
+      created++;
+      await indexNode(id);
+    }
+    await recomputeDepths(a.canvas_id);
+    await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [a.canvas_id]);
+    return res.json({ action: 'rearrange', mode: 'modify', applied: true, created_count: created });
   } catch (e) {
     next(e);
   }

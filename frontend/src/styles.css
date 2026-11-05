@@ -257,6 +257,33 @@ select:focus {
   flex-wrap: wrap;
 }
 
+.rearrange-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rearrange-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rearrange-mode {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rearrange-mode input[type='radio'] {
+  accent-color: var(--primary);
+  margin: 0;
+}
+
 .canvas-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

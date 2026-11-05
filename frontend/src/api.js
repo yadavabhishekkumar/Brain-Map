@@ -68,6 +68,12 @@ export const api = {
       body: JSON.stringify({ node_id: nodeId, text, action, mode, author: 'You', model }),
     }),
 
+  rearrangeNode: (nodeId, prompt, mode, model) =>
+    request('/ai/rearrange', {
+      method: 'POST',
+      body: JSON.stringify({ node_id: nodeId, prompt, mode, model }),
+    }),
+
   listChats: (nodeId) => request(`/nodes/${nodeId}/chats`),
 
   downloadEpaper: (payload) => request('/epaper/download', { method: 'POST', body: JSON.stringify(payload) }),
