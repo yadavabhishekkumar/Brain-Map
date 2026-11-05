@@ -5,6 +5,9 @@ import MicButton from './MicButton';
 import AiModelBadge from './AiModelBadge';
 import { getAiModel } from '../aiModel';
 
+const DEFAULT_REARRANGE_PROMPT =
+  'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes and description, Connect them based on their relationship. If they are independent, then should exist parallel to each other. If they are somehow connected then connect them sequentially.';
+
 export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
@@ -27,6 +30,9 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [showChats, setShowChats] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [rearrangePrompt, setRearrangePrompt] = useState(DEFAULT_REARRANGE_PROMPT);
+  const [rearrangeMode, setRearrangeMode] = useState('keep');
+  const [rearranging, setRearranging] = useState(false);
   const resizeRef = useRef({ active: false, startX: 0, startWidth: width });
 
   const startResize = (e) => {
@@ -285,6 +291,43 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     else setPendingApply(null);
   };
 
+  const rearrangeChildren = async () => {
+    if (editMode || !rearrangePrompt.trim() || rearranging) return;
+    setRearranging(true);
+    try {
+      await api.rearrangeNode(nodeId, rearrangePrompt.trim(), rearrangeMode, getAiModel());
+      await load();
+      await onChanged();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRearranging(false);
+    }
+  };
+
+  const exportNode = async () => {
+    if (tempNode) {
+      alert('This node is new — save the canvas first to export it.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Export this topic and its children to a new linked canvas? The children will move to the new canvas.'
+      )
+    )
+      return;
+    setExporting(true);
+    try {
+      await api.exportNode(nodeId);
+      await load();
+      await onChanged();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const openChat = (chat) => {
     setQuestion(chat.question);
     setAnswer(chat.answer);
@@ -500,6 +543,51 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
             </div>
           )}
         </div>
+
+        <h4>
+          🔄 Rearrange child nodes <AiModelBadge />
+        </h4>
+        {nodes.some((n) => n.data && n.data.parent_id === nodeId) ? (
+          <div className="rearrange-section">
+            <div className="rearrange-modes">
+              <label className="rearrange-mode">
+                <input
+                  type="radio"
+                  name="rearrange-mode"
+                  checked={rearrangeMode === 'keep'}
+                  onChange={() => setRearrangeMode('keep')}
+                />
+                Keep title &amp; description
+              </label>
+              <label className="rearrange-mode">
+                <input
+                  type="radio"
+                  name="rearrange-mode"
+                  checked={rearrangeMode === 'modify'}
+                  onChange={() => setRearrangeMode('modify')}
+                />
+                Modify title &amp; description
+              </label>
+            </div>
+            <div className="voice-field">
+              <textarea
+                rows={3}
+                value={rearrangePrompt}
+                onChange={(e) => setRearrangePrompt(e.target.value)}
+              />
+              <MicButton onText={(t) => setRearrangePrompt((v) => (v ? v + ' ' + t : t))} />
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={rearrangeChildren}
+              disabled={rearranging || !rearrangePrompt.trim()}
+            >
+              {rearranging ? 'Arranging…' : 'Arrange child nodes'}
+            </button>
+          </div>
+        ) : (
+          <div className="muted">This topic has no child nodes.</div>
+        )}
       </div>
     </aside>
   );
