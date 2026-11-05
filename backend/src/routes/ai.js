@@ -33,7 +33,7 @@ async function buildAncestorContext(nodeId) {
 // POST /api/ai/ask  { node_id, question }
 router.post('/ask', async (req, res, next) => {
   try {
-    const { node_id, question } = req.body || {};
+    const { node_id, question, model } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!question || !question.trim()) return res.status(400).json({ error: 'question is required' });
 
@@ -52,7 +52,7 @@ router.post('/ask', async (req, res, next) => {
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { maxTokens: 2000, temperature: 0.2 });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 2000, temperature: 0.2 });
 
     const chatId = uuid();
     await pool.query(
@@ -134,7 +134,7 @@ function computePositions(flat) {
 // POST /api/ai/build  { canvas_id, prompt, node_id? }
 router.post('/build', async (req, res, next) => {
   try {
-    const { canvas_id, prompt, node_id } = req.body || {};
+    const { canvas_id, prompt, node_id, model } = req.body || {};
     if (!canvas_id) return res.status(400).json({ error: 'canvas_id is required' });
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
 
@@ -155,6 +155,7 @@ router.post('/build', async (req, res, next) => {
       { role: 'user', content: `User request:\n${prompt.trim()}` },
     ];
     const { content } = await ai.chatCompletion(messages, {
+      provider: model,
       maxTokens: 12000,
       temperature: 0.2,
       json: true,

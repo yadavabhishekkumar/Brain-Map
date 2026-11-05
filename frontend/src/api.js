@@ -53,10 +53,14 @@ export const api = {
 
   linkCanvas: (canvasId, data) => request(`/canvases/${canvasId}/link`, { method: 'POST', body: JSON.stringify(data) }),
 
-  askAI: (nodeId, question) => request('/ai/ask', { method: 'POST', body: JSON.stringify({ node_id: nodeId, question }) }),
+  askAI: (nodeId, question, model) =>
+    request('/ai/ask', { method: 'POST', body: JSON.stringify({ node_id: nodeId, question, model }) }),
 
-  aiBuild: (canvasId, prompt, nodeId) =>
-    request('/ai/build', { method: 'POST', body: JSON.stringify({ canvas_id: canvasId, prompt, node_id: nodeId || null }) }),
+  aiBuild: (canvasId, prompt, nodeId, model) =>
+    request('/ai/build', {
+      method: 'POST',
+      body: JSON.stringify({ canvas_id: canvasId, prompt, node_id: nodeId || null, model }),
+    }),
 
   applyAIAnswer: (nodeId, text, action, mode = 'append') =>
     request('/ai/apply', {

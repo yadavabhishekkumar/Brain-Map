@@ -40,8 +40,11 @@ services:
         value: local
       # Secrets — paste these in the Render dashboard when prompted:
       # - DEEPSEEK_API_KEY powers AI Q&A + AI map generation.
+      # - GEMINI_API_KEY powers AI Q&A + AI map generation (alternative model).
       # - OPENAI_API_KEY powers note-text extraction (falls back to local OCR).
       - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false

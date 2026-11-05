@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import MicButton from './MicButton';
+import { getAiModel } from '../aiModel';
 
 export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose }) {
   const [prompt, setPrompt] = useState('');
@@ -12,7 +13,7 @@ export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose 
     setBusy(true);
     setError('');
     try {
-      await api.aiBuild(canvasId, prompt.trim(), selectedNode ? selectedNode.id : null);
+      await api.aiBuild(canvasId, prompt.trim(), selectedNode ? selectedNode.id : null, getAiModel());
       await onBuilt();
       onClose();
     } catch (e) {

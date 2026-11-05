@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { renderMarkdown } from '../markdown';
 import MicButton from './MicButton';
+import { getAiModel } from '../aiModel';
 
 export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
@@ -208,7 +209,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     setAsking(true);
     setAnswer('');
     try {
-      const r = await api.askAI(nodeId, question.trim());
+      const r = await api.askAI(nodeId, question.trim(), getAiModel());
       setAnswer(r.answer);
     } catch (err) {
       alert(err.message);
