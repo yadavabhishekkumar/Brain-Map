@@ -117,6 +117,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
   }, []);
 
+  const collapseChildren = useCallback((nodeId) => {
+    setRevealedParentIds((prev) => {
+      const next = new Set(prev);
+      next.delete(nodeId);
+      return next;
+    });
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const data = await api.getCanvas(canvasId);
@@ -470,6 +478,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     return new Set(nodes.filter((n) => n.data && n.data.parent_id === hoveredNodeId).map((n) => n.id));
   }, [hoveredNodeId, nodes]);
 
+  // Ancestor chain of the hovered node, up to and including the root (highlighted in orange).
+  const hoveredParentIds = useMemo(() => {
+    const set = new Set();
+    if (!hoveredNodeId) return set;
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    let cur = byId.get(hoveredNodeId);
+    while (cur && cur.data && cur.data.parent_id) {
+      const parentId = cur.data.parent_id;
+      set.add(parentId);
+      cur = byId.get(parentId);
+    }
+    return set;
+  }, [hoveredNodeId, nodes]);
+
   // progressive disclosure + focus mode filtering + hover highlight + reveal
   const visible = useMemo(() => {
     const threshold = depthThreshold(zoom);
@@ -498,6 +520,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       const hasHiddenChildren = nodes.some(
         (c) => c.data && c.data.parent_id === n.id && hidden.has(c.id)
       );
+      const hasRevealedChildren =
+        revealedParentIds.has(n.id) && nodes.some((c) => c.data && c.data.parent_id === n.id);
       return {
         ...n,
         hidden: op <= 0.03 || focusHidden,
@@ -506,17 +530,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           ...n.data,
           scale,
           highlighted: hoveredChildIds.has(n.id),
+          parentHighlighted: hoveredParentIds.has(n.id),
           editMode,
           connectMode,
           onAction: onNodeAction,
           hasHiddenChildren,
+          hasRevealedChildren,
           onExpand: expandChildren,
+          onCollapse: collapseChildren,
         },
       };
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, editMode, connectMode, onNodeAction, revealedParentIds, expandChildren]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, expandChildren, collapseChildren]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {

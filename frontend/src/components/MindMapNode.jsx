@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 function MindMapNode({ data, selected, id }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, editMode, connectMode, onAction, hasHiddenChildren, onExpand } = data;
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, parentHighlighted, editMode, connectMode, onAction, hasHiddenChildren, hasRevealedChildren, onExpand, onCollapse } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -13,7 +13,7 @@ function MindMapNode({ data, selected, id }) {
 
   return (
     <div
-      className={`mind-node${isRoot ? ' mind-node-root' : ''}${linked_canvas_id ? ' mind-node-link' : ''}${selected ? ' mind-node-selected' : ''}${highlighted ? ' mind-node-child-highlight' : ''}`}
+      className={`mind-node${isRoot ? ' mind-node-root' : ''}${linked_canvas_id ? ' mind-node-link' : ''}${selected ? ' mind-node-selected' : ''}${highlighted ? ' mind-node-child-highlight' : ''}${parentHighlighted ? ' mind-node-parent-highlight' : ''}`}
       style={{ padding: `${paddingY}px ${paddingX}px` }}
     >
       {!connectMode && <Handle type="target" position={Position.Left} className="mind-handle" />}
@@ -131,6 +131,20 @@ function MindMapNode({ data, selected, id }) {
           }}
         >
           +
+        </button>
+      )}
+
+      {!editMode && hasRevealedChildren && (
+        <button
+          className="node-expand node-expand-right node-expand-collapse"
+          title="Hide child nodes"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCollapse(id);
+          }}
+        >
+          −
         </button>
       )}
     </div>
