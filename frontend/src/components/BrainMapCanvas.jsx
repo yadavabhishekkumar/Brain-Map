@@ -153,8 +153,13 @@ function buildTreeSheet(nodes) {
       const c1 = c0 + w - 1;
       const label = (n.data && n.data.label) || '';
       const desc = (n.data && n.data.content) || '';
-      rows[labelRow][c0] = { v: label, depth: d };
-      rows[descRow][c0] = { v: desc, depth: d };
+      rows[labelRow][c0] = {
+        v: label,
+        depth: d,
+        span: w,
+        linked: (n.data && n.data.linked_canvas_id) || null,
+      };
+      rows[descRow][c0] = { v: desc, depth: d, span: w };
       if (w > 1) {
         merges.push({ s: { r: labelRow, c: c0 }, e: { r: labelRow, c: c1 } });
         merges.push({ s: { r: descRow, c: c0 }, e: { r: descRow, c: c1 } });
@@ -163,6 +168,48 @@ function buildTreeSheet(nodes) {
   }
 
   return { rows, merges, totalCols, maxDepth };
+}
+
+// Build the flat "Outline" sheet as an array-of-arrays. Returns the aoa plus
+// the depth-sorted node list (used to attach hyperlinks by row index).
+function buildOutline(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const pathOf = (n) => {
+    const parts = [];
+    const seen = new Set();
+    let cur = n;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      parts.unshift(cur.data && cur.data.label ? cur.data.label : '');
+      cur = cur.data && cur.data.parent_id ? byId.get(cur.data.parent_id) : null;
+    }
+    return parts.join(' > ');
+  };
+  const sorted = [...nodes].sort((a, b) => {
+    const da = (a.data && a.data.depth) || 0;
+    const db = (b.data && b.data.depth) || 0;
+    if (da !== db) return da - db;
+    const ay = (a.position && a.position.y) || 0;
+    const by = (b.position && b.position.y) || 0;
+    return ay - by;
+  });
+  const aoa = [
+    ['Level', 'Path', 'Topic', 'Notes', 'Parent Topic', 'Attachments', 'Linked Canvas'],
+  ];
+  for (const n of sorted) {
+    const d = n.data || {};
+    const parent = d.parent_id ? byId.get(d.parent_id) : null;
+    aoa.push([
+      d.depth != null ? d.depth : '',
+      pathOf(n),
+      d.label || '',
+      d.content || '',
+      parent && parent.data ? parent.data.label || '' : '',
+      d.attachmentCount || 0,
+      d.linked_canvas_name || '',
+    ]);
+  }
+  return { aoa, sorted };
 }
 
 export default function BrainMapCanvas(props) {
@@ -721,104 +768,194 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   const exportExcel = useCallback(async () => {
     // Load SheetJS on demand so the export library isn't in the initial bundle.
-    const XLSX = await import('xlsx');
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const pathOf = (n) => {
-      const parts = [];
-      const seen = new Set();
-      let cur = n;
-      while (cur && !seen.has(cur.id)) {
-        seen.add(cur.id);
-        parts.unshift(cur.data && cur.data.label ? cur.data.label : '');
-        cur = cur.data && cur.data.parent_id ? byId.get(cur.data.parent_id) : null;
+    const XLSX = await import('xlsx-js-style');
+
+    // Recursively collect the current canvas plus every linked canvas.
+    const canvases = [];
+    const canvasById = new Map();
+    const visited = new Set();
+    const queue = [{ id: canvasId, name: canvasName, nodes }];
+    while (queue.length) {
+      const item = queue.shift();
+      if (visited.has(item.id)) continue;
+      visited.add(item.id);
+      canvases.push(item);
+      canvasById.set(item.id, item);
+      for (const n of item.nodes) {
+        const lid = n.data && n.data.linked_canvas_id;
+        if (lid && !visited.has(lid)) {
+          try {
+            const d = await api.getCanvas(lid);
+            queue.push({
+              id: lid,
+              name: (d.canvas && d.canvas.name) || 'Canvas',
+              nodes: (d.nodes || []).map(toNode),
+            });
+          } catch (e) {
+            console.warn('[export] failed to load linked canvas', lid, e && e.message);
+          }
+        }
       }
-      return parts.join(' > ');
-    };
-    const sorted = [...nodes].sort((a, b) => {
-      const da = (a.data && a.data.depth) || 0;
-      const db = (b.data && b.data.depth) || 0;
-      if (da !== db) return da - db;
-      const ay = (a.position && a.position.y) || 0;
-      const by = (b.position && b.position.y) || 0;
-      return ay - by;
-    });
-    const rows = [
-      ['Level', 'Path', 'Topic', 'Notes', 'Parent Topic', 'Attachments', 'Linked Canvas'],
-    ];
-    for (const n of sorted) {
-      const d = n.data || {};
-      const parent = d.parent_id ? byId.get(d.parent_id) : null;
-      rows.push([
-        d.depth != null ? d.depth : '',
-        pathOf(n),
-        d.label || '',
-        d.content || '',
-        parent && parent.data ? parent.data.label || '' : '',
-        d.attachmentCount || 0,
-        d.linked_canvas_name || '',
-      ]);
     }
+
+    // Assign unique, Excel-safe sheet names (Outline + Tree per canvas).
+    const sanitize = (s) =>
+      String(s || 'Canvas')
+        .replace(/[^\p{L}\p{N} .\-()&,]+/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 31) || 'Canvas';
+    const used = new Set(['Outline', 'Tree']);
+    const treeSheetName = new Map();
+    const outlineSheetName = new Map();
+    treeSheetName.set(canvasId, 'Tree');
+    outlineSheetName.set(canvasId, 'Outline');
+    for (const c of canvases) {
+      if (c.id === canvasId) continue;
+      const base = sanitize(c.name);
+
+      let tname = base;
+      for (let n = 2; used.has(tname); n++) {
+        const suffix = ` (${n})`;
+        tname = base.slice(0, 31 - suffix.length) + suffix;
+      }
+      used.add(tname);
+      treeSheetName.set(c.id, tname);
+
+      let oname = sanitize(`${base} Outline`);
+      for (let n = 2; used.has(oname); n++) {
+        const suffix = ` (${n})`;
+        oname = sanitize(`${base} Outline`).slice(0, 31 - suffix.length) + suffix;
+      }
+      used.add(oname);
+      outlineSheetName.set(c.id, oname);
+    }
+
+    const linkTarget = (id) => {
+      const name = treeSheetName.get(id);
+      return name ? `#'${name}'!A1` : null;
+    };
+
     const safe =
       String(canvasName || 'brain-map').replace(/[\\/:*?"<>|]+/g, '').trim() || 'brain-map';
-    const tree = buildTreeSheet(nodes);
-
     const wb = XLSX.utils.book_new();
 
-    const ws1 = XLSX.utils.aoa_to_sheet(rows);
-    ws1['!cols'] = [
-      { wch: 6 },
-      { wch: 48 },
-      { wch: 28 },
-      { wch: 60 },
-      { wch: 24 },
-      { wch: 12 },
-      { wch: 20 },
-    ];
-    XLSX.utils.book_append_sheet(wb, ws1, 'Outline');
+    for (const c of canvases) {
+      const { aoa, sorted } = buildOutline(c.nodes);
 
-    // Build the Tree sheet manually so each cell can be styled: centred text,
-    // a yellow gradient fill (deep -> faded) and a font-size gradient (root ->
-    // leaf), both driven by node depth.
-    const ws2 = {};
-    const maxDepth = tree.maxDepth || 0;
-    const tFor = (depth) => (maxDepth <= 0 ? 0 : depth / maxDepth);
-    const hex2 = (v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase();
-    const fillFor = (depth) => {
-      const t = tFor(depth);
-      const g = 195 + (249 - 195) * t;
-      const b = 0 + (196 - 0) * t;
-      return { fgColor: { rgb: `FF${hex2(255)}${hex2(g)}${hex2(b)}` } };
-    };
-    const sizeFor = (depth) => Math.round(20 - 10 * tFor(depth));
-
-    for (let r = 0; r < tree.rows.length; r++) {
-      for (let c = 0; c < tree.totalCols; c++) {
-        const cell = tree.rows[r][c];
-        if (!cell) continue;
-        ws2[XLSX.utils.encode_cell({ r, c })] = {
-          v: cell.v,
-          t: 's',
-          s: {
-            alignment: { horizontal: 'center', vertical: 'center' },
-            fill: fillFor(cell.depth),
-            font: { sz: sizeFor(cell.depth) },
-          },
-        };
+      // --- Outline sheet ---
+      const wsOutline = XLSX.utils.aoa_to_sheet(aoa);
+      wsOutline['!cols'] = [
+        { wch: 6 },
+        { wch: 48 },
+        { wch: 28 },
+        { wch: 60 },
+        { wch: 24 },
+        { wch: 12 },
+        { wch: 20 },
+      ];
+      // Wrap every cell so long Notes / Paths never get cut off. Excel auto-fits
+      // these non-merged row heights when the file is opened.
+      const refO = XLSX.utils.decode_range(wsOutline['!ref']);
+      for (let R = refO.s.r; R <= refO.e.r; R++) {
+        const node = R === 0 ? null : sorted[R - 1];
+        for (let C = refO.s.c; C <= refO.e.c; C++) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!wsOutline[addr]) continue;
+          wsOutline[addr].s =
+            R === 0
+              ? { alignment: { horizontal: 'center', vertical: 'center', wrapText: true } }
+              : { alignment: { vertical: 'top', wrapText: true } };
+          const lid = node && node.data && node.data.linked_canvas_id;
+          if (C === 2 && lid && linkTarget(lid)) {
+            wsOutline[addr].s.font = { color: { rgb: 'FF0563C1' }, underline: true };
+            wsOutline[addr].l = {
+              Target: linkTarget(lid),
+              Tooltip: `Open linked canvas: ${(canvasById.get(lid) || {}).name || ''}`,
+            };
+          }
+        }
       }
+      XLSX.utils.book_append_sheet(wb, wsOutline, outlineSheetName.get(c.id));
+
+      // --- Tree sheet ---
+      const tree = buildTreeSheet(c.nodes);
+      const wsTree = {};
+      const maxDepth = tree.maxDepth || 0;
+      const tFor = (depth) => (maxDepth <= 0 ? 0 : depth / maxDepth);
+      const hex2 = (v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase();
+      const fillFor = (depth) => {
+        const t = tFor(depth);
+        const g = 195 + (249 - 195) * t;
+        const b = 0 + (196 - 0) * t;
+        return { patternType: 'solid', fgColor: { rgb: `FF${hex2(255)}${hex2(g)}${hex2(b)}` } };
+      };
+      const sizeFor = (depth) => Math.round(20 - 10 * tFor(depth));
+
+      for (let r = 0; r < tree.rows.length; r++) {
+        for (let col = 0; col < tree.totalCols; col++) {
+          const cell = tree.rows[r][col];
+          if (!cell) continue;
+          const font = { sz: sizeFor(cell.depth) };
+          if (cell.linked && linkTarget(cell.linked)) {
+            font.color = { rgb: 'FF0563C1' };
+            font.underline = true;
+          }
+          const cellObj = {
+            v: cell.v,
+            t: 's',
+            s: {
+              alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+              fill: fillFor(cell.depth),
+              font,
+            },
+          };
+          if (cell.linked && linkTarget(cell.linked)) {
+            cellObj.l = {
+              Target: linkTarget(cell.linked),
+              Tooltip: `Open linked canvas: ${(canvasById.get(cell.linked) || {}).name || ''}`,
+            };
+          }
+          wsTree[XLSX.utils.encode_cell({ r, c: col })] = cellObj;
+        }
+      }
+      wsTree['!ref'] = XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: tree.rows.length - 1, c: tree.totalCols - 1 },
+      });
+      wsTree['!merges'] = tree.merges;
+      wsTree['!cols'] = Array.from({ length: tree.totalCols }, () => ({ wch: 18 }));
+
+      const colWch = 18;
+      const estimateLines = (text, span, fontSize) => {
+        const s = String(text || '');
+        if (!s) return 1;
+        const charsPerLine = Math.max(6, Math.floor((span * colWch * 10) / Math.max(8, fontSize)));
+        let total = 0;
+        for (const line of s.split('\n')) {
+          total += Math.max(1, Math.ceil(line.length / charsPerLine));
+        }
+        return total;
+      };
+      const rowHeights = [];
+      for (let r = 0; r < tree.rows.length; r++) {
+        const depth = Math.floor(r / 2);
+        const fontSize = sizeFor(depth);
+        let lines = 1;
+        for (let col = 0; col < tree.totalCols; col++) {
+          const cell = tree.rows[r][col];
+          if (!cell) continue;
+          const l = estimateLines(cell.v, cell.span || 1, fontSize);
+          if (l > lines) lines = l;
+        }
+        rowHeights.push({ hpt: Math.ceil(lines * fontSize * 1.5) + 10 });
+      }
+      wsTree['!rows'] = rowHeights;
+      XLSX.utils.book_append_sheet(wb, wsTree, treeSheetName.get(c.id));
     }
-    ws2['!ref'] = XLSX.utils.encode_range({
-      s: { r: 0, c: 0 },
-      e: { r: tree.rows.length - 1, c: tree.totalCols - 1 },
-    });
-    ws2['!merges'] = tree.merges;
-    ws2['!cols'] = Array.from({ length: tree.totalCols }, () => ({ wch: 18 }));
-    ws2['!rows'] = Array.from({ length: tree.rows.length }, (_, r) => ({
-      hpt: sizeFor(Math.floor(r / 2)) + 16,
-    }));
-    XLSX.utils.book_append_sheet(wb, ws2, 'Tree');
 
     XLSX.writeFile(wb, `${safe}.xlsx`);
-  }, [nodes, canvasName]);
+  }, [nodes, canvasName, canvasId]);
 
   const handleConnect = useCallback(
     async (connection) => {
