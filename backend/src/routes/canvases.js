@@ -72,7 +72,23 @@ router.get('/:id', async (req, res, next) => {
       [id]
     );
 
-    res.json({ canvas: canvas.rows[0], nodes: nodes.rows, edges: edges.rows });
+    // Canvases that contain a node linking to this canvas (i.e. "parent" canvases
+    // this canvas is embedded in). Used for the "back to parent" navigation.
+    const parentCanvases = await pool.query(
+      `SELECT DISTINCT c.id, c.name
+       FROM canvases c
+       JOIN nodes n ON n.canvas_id = c.id
+       WHERE n.linked_canvas_id = $1
+       ORDER BY c.name`,
+      [id]
+    );
+
+    res.json({
+      canvas: canvas.rows[0],
+      parentCanvases: parentCanvases.rows,
+      nodes: nodes.rows,
+      edges: edges.rows,
+    });
   } catch (e) {
     next(e);
   }

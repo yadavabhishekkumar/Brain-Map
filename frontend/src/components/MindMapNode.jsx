@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 function MindMapNode({ data, selected, id }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, parentHighlighted, editMode, connectMode, onAction, hasHiddenChildren, hasRevealedChildren, onExpand, onCollapse } = data;
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, parentHighlighted, editMode, connectMode, onAction, hasHiddenChildren, hasVisibleChildren, onExpand, onCollapse } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -134,7 +134,7 @@ function MindMapNode({ data, selected, id }) {
         </button>
       )}
 
-      {!editMode && hasRevealedChildren && (
+      {!editMode && hasVisibleChildren && (
         <button
           className="node-expand node-expand-right node-expand-collapse"
           title="Hide child nodes"

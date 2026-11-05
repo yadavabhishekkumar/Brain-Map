@@ -71,6 +71,200 @@ function estimateNodeWidth(node) {
   return Math.max(60, labelWidth + padding + extra);
 }
 
+// Build the hierarchical "Tree" sheet as an array-of-arrays plus merge ranges.
+// Each leaf (bottom-most node) owns one column; internal nodes span the columns
+// of all their descendant leaves. Every node occupies two rows: its label on
+// top and its description (notes) directly below it.
+function buildTreeSheet(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const childrenMap = new Map();
+  const roots = [];
+
+  for (const n of nodes) {
+    const pid = n.data && n.data.parent_id;
+    if (pid && byId.has(pid)) {
+      if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+      childrenMap.get(pid).push(n);
+    } else {
+      roots.push(n);
+    }
+  }
+
+  const byPos = (a, b) =>
+    ((a.position && a.position.y) || 0) - ((b.position && b.position.y) || 0) ||
+    ((a.position && a.position.x) || 0) - ((b.position && b.position.x) || 0);
+  roots.sort(byPos);
+  childrenMap.forEach((kids) => kids.sort(byPos));
+
+  const colStart = new Map();
+  const span = new Map();
+  const depthMap = new Map();
+  const visited = new Set();
+  let col = 0;
+
+  const walk = (n, depth) => {
+    if (visited.has(n.id)) return;
+    visited.add(n.id);
+    const kids = childrenMap.get(n.id) || [];
+    colStart.set(n.id, col);
+    depthMap.set(n.id, depth);
+    if (kids.length === 0) {
+      span.set(n.id, 1);
+      col += 1;
+      return;
+    }
+    let total = 0;
+    for (const k of kids) {
+      walk(k, depth + 1);
+      total += span.get(k.id) || 1;
+    }
+    span.set(n.id, total);
+  };
+  roots.forEach((r) => walk(r, 0));
+
+  // Defensive: any orphaned node (not reached from a root) gets its own column.
+  for (const n of nodes) {
+    if (!span.has(n.id)) {
+      colStart.set(n.id, col);
+      span.set(n.id, 1);
+      depthMap.set(n.id, 0);
+      col += 1;
+    }
+  }
+
+  const totalCols = Math.max(1, col);
+  const maxDepth = Math.max(0, ...depthMap.values());
+
+  const rows = [];
+  const merges = [];
+  for (let d = 0; d <= maxDepth; d++) {
+    const labelRow = rows.length;
+    rows.push(new Array(totalCols).fill(null));
+    const descRow = rows.length;
+    rows.push(new Array(totalCols).fill(null));
+
+    const levelNodes = nodes
+      .filter((n) => (depthMap.get(n.id) ?? 0) === d)
+      .sort(byPos);
+
+    for (const n of levelNodes) {
+      const c0 = colStart.get(n.id) ?? 0;
+      const w = span.get(n.id) ?? 1;
+      const c1 = c0 + w - 1;
+      const label = (n.data && n.data.label) || '';
+      const desc = (n.data && n.data.content) || '';
+      rows[labelRow][c0] = {
+        v: label,
+        depth: d,
+        span: w,
+        linked: (n.data && n.data.linked_canvas_id) || null,
+      };
+      rows[descRow][c0] = { v: desc, depth: d, span: w };
+      if (w > 1) {
+        merges.push({ s: { r: labelRow, c: c0 }, e: { r: labelRow, c: c1 } });
+        merges.push({ s: { r: descRow, c: c0 }, e: { r: descRow, c: c1 } });
+      }
+    }
+  }
+
+  return { rows, merges, totalCols, maxDepth };
+}
+
+// Build the flat "Outline" sheet as an array-of-arrays. Returns the aoa plus
+// the depth-sorted node list (used to attach hyperlinks by row index).
+function buildOutline(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const pathOf = (n) => {
+    const parts = [];
+    const seen = new Set();
+    let cur = n;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      parts.unshift(cur.data && cur.data.label ? cur.data.label : '');
+      cur = cur.data && cur.data.parent_id ? byId.get(cur.data.parent_id) : null;
+    }
+    return parts.join(' > ');
+  };
+  const sorted = [...nodes].sort((a, b) => {
+    const da = (a.data && a.data.depth) || 0;
+    const db = (b.data && b.data.depth) || 0;
+    if (da !== db) return da - db;
+    const ay = (a.position && a.position.y) || 0;
+    const by = (b.position && b.position.y) || 0;
+    return ay - by;
+  });
+  const aoa = [
+    ['Level', 'Path', 'Topic', 'Notes', 'Parent Topic', 'Attachments', 'Linked Canvas'],
+  ];
+  for (const n of sorted) {
+    const d = n.data || {};
+    const parent = d.parent_id ? byId.get(d.parent_id) : null;
+    aoa.push([
+      d.depth != null ? d.depth : '',
+      pathOf(n),
+      d.label || '',
+      d.content || '',
+      parent && parent.data ? parent.data.label || '' : '',
+      d.attachmentCount || 0,
+      d.linked_canvas_name || '',
+    ]);
+  }
+  return { aoa, sorted };
+}
+
+// Shared depth-based gradient (deep yellow -> faded yellow) and font-size ramp
+// (root -> leaf). Used by both the Excel export and the in-app table view.
+function depthGradient(maxDepth) {
+  const safe = Math.max(0, maxDepth || 0);
+  const tFor = (depth) => (safe <= 0 ? 0 : Math.min(1, depth / safe));
+  const hex2 = (v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase();
+  const colorFor = (depth) => {
+    const t = tFor(depth);
+    const g = 195 + (249 - 195) * t;
+    const b = 0 + (196 - 0) * t;
+    return `#${hex2(255)}${hex2(g)}${hex2(b)}`;
+  };
+  const sizeFor = (depth) => Math.round(20 - 10 * tFor(depth));
+  return { colorFor, sizeFor };
+}
+
+function TabularView({ nodes, onOpenCanvas }) {
+  const data = useMemo(() => buildTreeSheet(nodes), [nodes]);
+  const { colorFor, sizeFor } = depthGradient(data.maxDepth);
+  return (
+    <div className="tabular-view">
+      {data.rows.map((row, r) => (
+        <div
+          key={r}
+          className="tabular-row"
+          style={{ gridTemplateColumns: `repeat(${data.totalCols}, minmax(72px, 1fr))` }}
+        >
+          {row.map((cell, c) => {
+            if (!cell) return null;
+            const isLabel = r % 2 === 0;
+            const size = isLabel ? sizeFor(cell.depth) : Math.max(9, sizeFor(cell.depth) - 4);
+            return (
+              <div
+                key={c}
+                className={`tabular-cell${isLabel ? ' tabular-cell-label' : ' tabular-cell-desc'}${cell.linked ? ' tabular-cell-link' : ''}`}
+                style={{
+                  gridColumn: `span ${cell.span || 1}`,
+                  backgroundColor: colorFor(cell.depth),
+                  fontSize: `${size}px`,
+                }}
+                title={cell.linked ? 'Open linked canvas' : undefined}
+                onClick={cell.linked ? () => onOpenCanvas(cell.linked, cell.v) : undefined}
+              >
+                {cell.v}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function BrainMapCanvas(props) {
   return (
     <ReactFlowProvider>
@@ -85,6 +279,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [previewNodeId, setPreviewNodeId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [parentCanvases, setParentCanvases] = useState([]);
+  const [zoomLock, setZoomLock] = useState(false);
+  const [tabularMode, setTabularMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
@@ -108,11 +305,17 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [connectMode, setConnectMode] = useState(false);
   const alignBaselineRef = useRef(null);
   const [revealedParentIds, setRevealedParentIds] = useState(() => new Set());
+  const [collapsedParentIds, setCollapsedParentIds] = useState(() => new Set());
 
   const expandChildren = useCallback((nodeId) => {
     setRevealedParentIds((prev) => {
       const next = new Set(prev);
       next.add(nodeId);
+      return next;
+    });
+    setCollapsedParentIds((prev) => {
+      const next = new Set(prev);
+      next.delete(nodeId);
       return next;
     });
   }, []);
@@ -121,6 +324,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setRevealedParentIds((prev) => {
       const next = new Set(prev);
       next.delete(nodeId);
+      return next;
+    });
+    setCollapsedParentIds((prev) => {
+      const next = new Set(prev);
+      next.add(nodeId);
       return next;
     });
   }, []);
@@ -137,13 +345,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           label: e.label || '',
         }))
       );
+      setParentCanvases(data.parentCanvases || []);
     } catch (e) {
       console.error(e);
       alert('Failed to load canvas: ' + e.message);
     } finally {
       setLoading(false);
     }
-  }, [canvasId, setNodes, setEdges]);
+  }, [canvasId, setNodes, setEdges, setParentCanvases]);
 
   useEffect(() => {
     load();
@@ -498,30 +707,43 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const scale = nodeScale(zoom);
     const hidden = new Set();
 
-    // Pass 1: decide hidden nodes (depth threshold + focus + reveal override).
+    // Pass 1: decide hidden nodes (zoom threshold + focus + manual collapse/reveal).
     nodes.forEach((n) => {
       const rawDepth = (n.data && n.data.depth) || 0;
       const d = focusedSubtreeIds ? Math.max(0, rawDepth - focusBaseDepth) : rawDepth;
       const parentId = n.data && n.data.parent_id;
-      const revealed = !!parentId && revealedParentIds.has(parentId);
-      const op = revealed ? 1 : nodeOpacity(d, threshold);
+      let op;
+      if (parentId && collapsedParentIds.has(parentId)) {
+        op = 0; // manually collapsed
+      } else if (parentId && revealedParentIds.has(parentId)) {
+        op = 1; // manually revealed
+      } else {
+        op = nodeOpacity(d, threshold);
+      }
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       if (op <= 0.03 || focusHidden) hidden.add(n.id);
     });
 
-    // Pass 2: build visible nodes + flag nodes that have hidden children.
+    // Pass 2: build visible nodes + flag nodes with hidden/visible children.
     const vnodes = nodes.map((n) => {
       const rawDepth = (n.data && n.data.depth) || 0;
       const d = focusedSubtreeIds ? Math.max(0, rawDepth - focusBaseDepth) : rawDepth;
       const parentId = n.data && n.data.parent_id;
-      const revealed = !!parentId && revealedParentIds.has(parentId);
-      const op = revealed ? 1 : nodeOpacity(d, threshold);
+      let op;
+      if (parentId && collapsedParentIds.has(parentId)) {
+        op = 0;
+      } else if (parentId && revealedParentIds.has(parentId)) {
+        op = 1;
+      } else {
+        op = nodeOpacity(d, threshold);
+      }
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       const hasHiddenChildren = nodes.some(
         (c) => c.data && c.data.parent_id === n.id && hidden.has(c.id)
       );
-      const hasRevealedChildren =
-        revealedParentIds.has(n.id) && nodes.some((c) => c.data && c.data.parent_id === n.id);
+      const hasVisibleChildren = nodes.some(
+        (c) => c.data && c.data.parent_id === n.id && !hidden.has(c.id)
+      );
       return {
         ...n,
         hidden: op <= 0.03 || focusHidden,
@@ -535,7 +757,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           connectMode,
           onAction: onNodeAction,
           hasHiddenChildren,
-          hasRevealedChildren,
+          hasVisibleChildren,
           onExpand: expandChildren,
           onCollapse: collapseChildren,
         },
@@ -543,7 +765,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, expandChildren, collapseChildren]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, collapsedParentIds, expandChildren, collapseChildren]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -597,6 +819,197 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     setNodes((nds) => [...nds, toNode(node)]);
   }, [canvasId, nodes.length, setNodes]);
+
+  const exportExcel = useCallback(async () => {
+    // Load SheetJS on demand so the export library isn't in the initial bundle.
+    const XLSX = await import('xlsx-js-style');
+
+    // Recursively collect the current canvas plus every linked canvas.
+    const canvases = [];
+    const canvasById = new Map();
+    const visited = new Set();
+    const queue = [{ id: canvasId, name: canvasName, nodes }];
+    while (queue.length) {
+      const item = queue.shift();
+      if (visited.has(item.id)) continue;
+      visited.add(item.id);
+      canvases.push(item);
+      canvasById.set(item.id, item);
+      for (const n of item.nodes) {
+        const lid = n.data && n.data.linked_canvas_id;
+        if (lid && !visited.has(lid)) {
+          try {
+            const d = await api.getCanvas(lid);
+            queue.push({
+              id: lid,
+              name: (d.canvas && d.canvas.name) || 'Canvas',
+              nodes: (d.nodes || []).map(toNode),
+            });
+          } catch (e) {
+            console.warn('[export] failed to load linked canvas', lid, e && e.message);
+          }
+        }
+      }
+    }
+
+    // Assign unique, Excel-safe sheet names (Outline + Tree per canvas).
+    const sanitize = (s) =>
+      String(s || 'Canvas')
+        .replace(/[^\p{L}\p{N} .\-()&,]+/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 31) || 'Canvas';
+    const used = new Set(['Outline', 'Tree']);
+    const treeSheetName = new Map();
+    const outlineSheetName = new Map();
+    treeSheetName.set(canvasId, 'Tree');
+    outlineSheetName.set(canvasId, 'Outline');
+    for (const c of canvases) {
+      if (c.id === canvasId) continue;
+      const base = sanitize(c.name);
+
+      let tname = base;
+      for (let n = 2; used.has(tname); n++) {
+        const suffix = ` (${n})`;
+        tname = base.slice(0, 31 - suffix.length) + suffix;
+      }
+      used.add(tname);
+      treeSheetName.set(c.id, tname);
+
+      let oname = sanitize(`${base} Outline`);
+      for (let n = 2; used.has(oname); n++) {
+        const suffix = ` (${n})`;
+        oname = sanitize(`${base} Outline`).slice(0, 31 - suffix.length) + suffix;
+      }
+      used.add(oname);
+      outlineSheetName.set(c.id, oname);
+    }
+
+    const linkTarget = (id) => {
+      const name = treeSheetName.get(id);
+      return name ? `#'${name}'!A1` : null;
+    };
+
+    const safe =
+      String(canvasName || 'brain-map').replace(/[\\/:*?"<>|]+/g, '').trim() || 'brain-map';
+    const wb = XLSX.utils.book_new();
+
+    for (const c of canvases) {
+      const { aoa, sorted } = buildOutline(c.nodes);
+
+      // --- Outline sheet ---
+      const wsOutline = XLSX.utils.aoa_to_sheet(aoa);
+      wsOutline['!cols'] = [
+        { wch: 6 },
+        { wch: 48 },
+        { wch: 28 },
+        { wch: 60 },
+        { wch: 24 },
+        { wch: 12 },
+        { wch: 20 },
+      ];
+      // Wrap every cell so long Notes / Paths never get cut off. Excel auto-fits
+      // these non-merged row heights when the file is opened.
+      const refO = XLSX.utils.decode_range(wsOutline['!ref']);
+      for (let R = refO.s.r; R <= refO.e.r; R++) {
+        const node = R === 0 ? null : sorted[R - 1];
+        for (let C = refO.s.c; C <= refO.e.c; C++) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!wsOutline[addr]) continue;
+          wsOutline[addr].s =
+            R === 0
+              ? { alignment: { horizontal: 'center', vertical: 'center', wrapText: true } }
+              : { alignment: { vertical: 'top', wrapText: true } };
+          const lid = node && node.data && node.data.linked_canvas_id;
+          if (C === 2 && lid && linkTarget(lid)) {
+            wsOutline[addr].s.font = { color: { rgb: 'FF0563C1' }, underline: true };
+            wsOutline[addr].l = {
+              Target: linkTarget(lid),
+              Tooltip: `Open linked canvas: ${(canvasById.get(lid) || {}).name || ''}`,
+            };
+          }
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, wsOutline, outlineSheetName.get(c.id));
+
+      // --- Tree sheet ---
+      const tree = buildTreeSheet(c.nodes);
+      const wsTree = {};
+      const maxDepth = tree.maxDepth || 0;
+      const tFor = (depth) => (maxDepth <= 0 ? 0 : depth / maxDepth);
+      const hex2 = (v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase();
+      const fillFor = (depth) => {
+        const t = tFor(depth);
+        const g = 195 + (249 - 195) * t;
+        const b = 0 + (196 - 0) * t;
+        return { patternType: 'solid', fgColor: { rgb: `FF${hex2(255)}${hex2(g)}${hex2(b)}` } };
+      };
+      const sizeFor = (depth) => Math.round(20 - 10 * tFor(depth));
+
+      for (let r = 0; r < tree.rows.length; r++) {
+        for (let col = 0; col < tree.totalCols; col++) {
+          const cell = tree.rows[r][col];
+          if (!cell) continue;
+          const font = { sz: sizeFor(cell.depth) };
+          if (cell.linked && linkTarget(cell.linked)) {
+            font.color = { rgb: 'FF0563C1' };
+            font.underline = true;
+          }
+          const cellObj = {
+            v: cell.v,
+            t: 's',
+            s: {
+              alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+              fill: fillFor(cell.depth),
+              font,
+            },
+          };
+          if (cell.linked && linkTarget(cell.linked)) {
+            cellObj.l = {
+              Target: linkTarget(cell.linked),
+              Tooltip: `Open linked canvas: ${(canvasById.get(cell.linked) || {}).name || ''}`,
+            };
+          }
+          wsTree[XLSX.utils.encode_cell({ r, c: col })] = cellObj;
+        }
+      }
+      wsTree['!ref'] = XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: tree.rows.length - 1, c: tree.totalCols - 1 },
+      });
+      wsTree['!merges'] = tree.merges;
+      wsTree['!cols'] = Array.from({ length: tree.totalCols }, () => ({ wch: 18 }));
+
+      const colWch = 18;
+      const estimateLines = (text, span, fontSize) => {
+        const s = String(text || '');
+        if (!s) return 1;
+        const charsPerLine = Math.max(6, Math.floor((span * colWch * 10) / Math.max(8, fontSize)));
+        let total = 0;
+        for (const line of s.split('\n')) {
+          total += Math.max(1, Math.ceil(line.length / charsPerLine));
+        }
+        return total;
+      };
+      const rowHeights = [];
+      for (let r = 0; r < tree.rows.length; r++) {
+        const depth = Math.floor(r / 2);
+        const fontSize = sizeFor(depth);
+        let lines = 1;
+        for (let col = 0; col < tree.totalCols; col++) {
+          const cell = tree.rows[r][col];
+          if (!cell) continue;
+          const l = estimateLines(cell.v, cell.span || 1, fontSize);
+          if (l > lines) lines = l;
+        }
+        rowHeights.push({ hpt: Math.ceil(lines * fontSize * 1.5) + 10 });
+      }
+      wsTree['!rows'] = rowHeights;
+      XLSX.utils.book_append_sheet(wb, wsTree, treeSheetName.get(c.id));
+    }
+
+    XLSX.writeFile(wb, `${safe}.xlsx`);
+  }, [nodes, canvasName, canvasId]);
 
   const handleConnect = useCallback(
     async (connection) => {
@@ -871,6 +1284,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         <button className="btn" onClick={onBack}>
           ← Canvases
         </button>
+        {parentCanvases.length > 0 && (
+          <div className="canvas-parents">
+            {parentCanvases.map((p) => (
+              <button
+                key={p.id}
+                className="btn canvas-parent-btn"
+                title={`Back to parent canvas: ${p.name}`}
+                onClick={() => onOpenCanvas(p.id, p.name)}
+              >
+                ↩ {p.name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="canvas-title">{canvasName}</div>
         <div className="topbar-actions">
           {!editMode ? (
@@ -881,11 +1308,36 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
                 Fit view
               </button>
+              <button
+                className={`btn${tabularMode ? ' btn-tabular-active' : ''}`}
+                title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'}
+                onClick={() => setTabularMode((v) => !v)}
+              >
+                📊 Tabular Format
+              </button>
+              <button
+                className={`btn${zoomLock ? ' btn-zoom-lock-active' : ''}`}
+                title={
+                  zoomLock
+                    ? 'Zoom lock ON — scroll to pan the canvas instead of zooming'
+                    : 'Zoom lock OFF — scroll to zoom in/out'
+                }
+                onClick={() => setZoomLock((v) => !v)}
+              >
+                {zoomLock ? '🔒' : '🔓'} Zoom Lock
+              </button>
               <button className="btn" onClick={() => setLinkModalOpen(true)}>
                 🔗 Link canvas
               </button>
               <button className="btn" onClick={() => setAiPanelOpen((o) => !o)}>
                 🤖 AI
+              </button>
+              <button
+                className="btn"
+                onClick={exportExcel}
+                title="Download this brain map as an Excel workbook (Outline + Tree sheets)"
+              >
+                ⬇ Export Excel
               </button>
               <button className="btn btn-edit" onClick={enterEditMode}>
                 ✏️ Edit
@@ -926,7 +1378,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       </div>
 
       <div className="canvas-body">
-        <div className="canvas-flow">
+        {tabularMode ? (
+          <TabularView nodes={nodes} onOpenCanvas={onOpenCanvas} />
+        ) : (
+          <div className="canvas-flow">
           <ReactFlow
             nodes={visible.nodes}
             edges={visible.edges}
@@ -945,6 +1400,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onPaneClick={handlePaneClick}
             minZoom={0.2}
             maxZoom={2.5}
+            zoomOnScroll={!zoomLock}
+            zoomOnPinch={!zoomLock}
+            panOnScroll={zoomLock}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
             nodesDraggable={!studyMode && !alignMode && !connectMode}
@@ -1035,9 +1493,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               onEdit={() => handleNodeDoubleClick(null, previewNode)}
             />
           )}
-        </div>
+          </div>
+        )}
 
-        {selectedNodeId && !studyMode && (
+        {!tabularMode && selectedNodeId && !studyMode && (
           <NodeEditor
             nodeId={selectedNodeId}
             nodes={nodes}
