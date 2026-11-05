@@ -10,7 +10,7 @@ export default function AiModelBadge() {
     <select
       className="ai-model-badge"
       value={model}
-      title="Switch the AI model used for this feature"
+      title={AI_MODELS.find((m) => m.id === model)?.hint || 'Switch the AI model used for this feature'}
       onChange={(e) => setAiModel(e.target.value)}
     >
       {AI_MODELS.map((m) => (

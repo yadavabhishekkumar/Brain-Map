@@ -2,9 +2,9 @@ const KEY = 'upsc_ai_model';
 const listeners = new Set();
 
 export const AI_MODELS = [
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
-  { id: 'gemini', label: 'Gemini' },
+  { id: 'deepseek', label: 'DeepSeek', hint: 'Best all-rounder — Q&A, map building, content and structured output.' },
+  { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner', hint: 'Deep reasoning for hard analytical / essay questions. Not for maps or bulk content.' },
+  { id: 'gemini', label: 'Gemini', hint: 'General alternative model for Q&A and map building.' },
 ];
 
 export function getAiModel() {

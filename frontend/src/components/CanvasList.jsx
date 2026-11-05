@@ -157,6 +157,7 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
           ))}
         </select>
       </div>
+      <div className="ai-model-hint">{AI_MODELS.find((m) => m.id === aiModel)?.hint || ''}</div>
 
       <div className="epaper-banner">
         <div>
