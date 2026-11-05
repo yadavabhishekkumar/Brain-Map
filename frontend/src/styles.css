@@ -919,6 +919,11 @@ mark {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35), var(--shadow);
 }
 
+.mind-node-parent-highlight {
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.4), var(--shadow);
+}
+
 .canvas-shell.edit-mode .react-flow {
   background: #fff7ed;
 }
@@ -1221,6 +1226,11 @@ mark {
   right: -13px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+.node-expand-collapse {
+  border-color: #f97316;
+  color: #c2410c;
 }
 
 /* ---------- Horizontal Aligner ---------- */

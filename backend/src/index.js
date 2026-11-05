@@ -10,11 +10,12 @@ const fs = require('fs');
 async function main() {
   await initSchema();
   await storage.init();
-  try {
-    await es.ensureIndex();
-  } catch (e) {
-    console.warn('[es] index init failed (is Elasticsearch running?):', e.message);
-  }
+  // Elasticsearch is optional — don't block startup on it. On the free Render
+  // plan an unreachable ES cluster would otherwise delay the first response by
+  // the full request timeout while the service boots.
+  es.ensureIndex().catch((e) =>
+    console.warn('[es] index init failed (is Elasticsearch running?):', e.message)
+  );
 
   const app = express();
   app.use(cors({ origin: true, credentials: true }));

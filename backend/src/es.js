@@ -5,7 +5,7 @@ const config = require('./config');
 const base = config.elasticUrl.replace(/\/+$/, '');
 
 async function request(method, path, body) {
-  const opts = { method, url: `${base}${path}`, timeout: 8000 };
+  const opts = { method, url: `${base}${path}`, timeout: 2500 };
   if (body !== undefined) opts.data = body;
   const resp = await axios(opts);
   return resp.data;

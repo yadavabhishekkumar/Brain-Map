@@ -8,6 +8,8 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [content, setContent] = useState('');
   const [parentId, setParentId] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(true);
+  const nodesRef = useRef(nodes);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [extractingId, setExtractingId] = useState(null);
@@ -49,6 +51,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     };
   }, [onResize]);
 
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
   const load = useCallback(async () => {
     // Newly created nodes (edit mode) have temp ids and aren't in the DB yet.
     if (tempNode) {
@@ -67,8 +73,29 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
       setContent(d.content || '');
       setParentId(d.parent_id || '');
       setAttachments([]);
+      setAttachmentsLoading(false);
       return;
     }
+    // Seed instantly from the already-loaded canvas data so the panel paints
+    // immediately (no network round trip) while attachments load in the background.
+    const cached = nodesRef.current.find((n) => n.id === nodeId);
+    if (cached) {
+      const d = cached.data || {};
+      setNode({
+        id: cached.id,
+        label: d.label || '',
+        content: d.content || '',
+        parent_id: d.parent_id || null,
+        depth: d.depth || 0,
+        linked_canvas_id: d.linked_canvas_id || null,
+        linked_canvas_name: d.linked_canvas_name || '',
+        attachment_count: d.attachmentCount || 0,
+      });
+      setLabel(d.label || '');
+      setContent(d.content || '');
+      setParentId(d.parent_id || '');
+    }
+    setAttachmentsLoading(true);
     try {
       const n = await api.getNode(nodeId);
       setNode(n);
@@ -78,6 +105,8 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
       setAttachments(n.attachments || []);
     } catch (e) {
       alert(e.message);
+    } finally {
+      setAttachmentsLoading(false);
     }
   }, [nodeId, tempNode]);
 
@@ -338,7 +367,8 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
         </label>
 
         <div className="attachments">
-          {attachments.length === 0 && <div className="muted">No attachments yet.</div>}
+          {attachmentsLoading && <div className="muted">Loading attachments…</div>}
+          {!attachmentsLoading && attachments.length === 0 && <div className="muted">No attachments yet.</div>}
           {attachments.map((a) => (
             <div key={a.id} className="attachment">
               <img
