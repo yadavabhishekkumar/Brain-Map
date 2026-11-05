@@ -52,7 +52,7 @@ router.post('/ask', async (req, res, next) => {
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 2000, temperature: 0.2 });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2 });
 
     const chatId = uuid();
     await pool.query(

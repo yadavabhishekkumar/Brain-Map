@@ -1,10 +1,23 @@
-import { AI_MODELS, getAiModel } from '../aiModel';
+import { useEffect, useState } from 'react';
+import { AI_MODELS, getAiModel, setAiModel, subscribeAiModel } from '../aiModel';
 
 export default function AiModelBadge() {
-  const model = AI_MODELS.find((m) => m.id === getAiModel());
+  const [model, setModel] = useState(getAiModel());
+
+  useEffect(() => subscribeAiModel((id) => setModel(id)), []);
+
   return (
-    <span className="ai-model-badge" title="The AI model used for this feature">
-      🤖 {model ? model.label : 'DeepSeek'}
-    </span>
+    <select
+      className="ai-model-badge"
+      value={model}
+      title={AI_MODELS.find((m) => m.id === model)?.hint || 'Switch the AI model used for this feature'}
+      onChange={(e) => setAiModel(e.target.value)}
+    >
+      {AI_MODELS.map((m) => (
+        <option key={m.id} value={m.id}>
+          🤖 {m.label}
+        </option>
+      ))}
+    </select>
   );
 }
