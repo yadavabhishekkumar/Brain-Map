@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import MicButton from './MicButton';
 
 export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose }) {
   const [prompt, setPrompt] = useState('');
@@ -35,12 +36,15 @@ export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose 
             ? `New topics will be added under “${selectedNode.data?.label || 'the selected node'}”.`
             : 'New topics will be added as a central topic.'}
         </p>
-        <textarea
-          rows={5}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Create a mind map for Indian Polity: Constitution, Parliament, Judiciary, Fundamental Rights, DPSP…"
-        />
+        <div className="voice-field">
+          <textarea
+            rows={5}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="e.g. Create a mind map for Indian Polity: Constitution, Parliament, Judiciary, Fundamental Rights, DPSP…"
+          />
+          <MicButton onText={(t) => setPrompt((v) => (v ? v + ' ' + t : t))} />
+        </div>
         {error && <div className="ai-error">{error}</div>}
         <button className="btn btn-primary" onClick={build} disabled={busy || !prompt.trim()}>
           {busy ? 'Generating…' : 'Generate map'}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import MicButton from './MicButton';
 
 export default function FocusSearch({ canvasId, onSelect }) {
   const [q, setQ] = useState('');
@@ -38,12 +39,15 @@ export default function FocusSearch({ canvasId, onSelect }) {
 
   return (
     <div className="focus-search">
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search topics to focus…"
-        onFocus={() => q.trim() && setOpen(true)}
-      />
+      <div className="voice-field">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search topics to focus…"
+          onFocus={() => q.trim() && setOpen(true)}
+        />
+        <MicButton onText={(t) => setQ((v) => (v ? v + ' ' + t : t))} />
+      </div>
       {open && (
         <div className="focus-search-dropdown">
           {loading && <div className="focus-search-empty">Searching…</div>}

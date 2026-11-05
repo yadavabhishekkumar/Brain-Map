@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import MicButton from './MicButton';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -43,12 +44,15 @@ export default function SearchBar({ canvasId, onFocus, onClose }) {
     <div className="search-overlay">
       <div className="search-box">
         <div className="search-input-row">
-          <input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search topics, notes & extracted text…"
-          />
+          <div className="voice-field">
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search topics, notes & extracted text…"
+            />
+            <MicButton onText={(t) => setQ((v) => (v ? v + ' ' + t : t))} />
+          </div>
           <button className="btn btn-ghost" onClick={onClose}>
             ✕
           </button>
