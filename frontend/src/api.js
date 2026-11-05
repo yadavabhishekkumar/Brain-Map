@@ -32,6 +32,7 @@ export const api = {
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteNode: (id) => request(`/nodes/${id}`, { method: 'DELETE' }),
   getNode: (id) => request(`/nodes/${id}`),
+  exportNode: (id) => request(`/nodes/${id}/export`, { method: 'POST' }),
 
   createEdge: (canvasId, data) => request(`/canvases/${canvasId}/edges`, { method: 'POST', body: JSON.stringify(data) }),
   updateEdge: (id, data) => request(`/edges/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

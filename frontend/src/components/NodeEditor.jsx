@@ -29,6 +29,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [chats, setChats] = useState([]);
   const [showChats, setShowChats] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
+  const [exporting, setExporting] = useState(false);
   const [rearrangePrompt, setRearrangePrompt] = useState(DEFAULT_REARRANGE_PROMPT);
   const [rearrangeMode, setRearrangeMode] = useState('keep');
   const [rearranging, setRearranging] = useState(false);
@@ -281,6 +282,29 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     }
   };
 
+  const exportNode = async () => {
+    if (tempNode) {
+      alert('This node is new — save the canvas first to export it.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Export this topic and its children to a new linked canvas? The children will move to the new canvas.'
+      )
+    )
+      return;
+    setExporting(true);
+    try {
+      await api.exportNode(nodeId);
+      await load();
+      await onChanged();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const openChat = (chat) => {
     setQuestion(chat.question);
     setAnswer(chat.answer);
@@ -351,6 +375,9 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
         <div className="panel-actions">
           <button className="btn btn-primary" onClick={save} disabled={saving || editMode}>
             {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>
+            {exporting ? 'Exporting…' : '📤 Export to new canvas'}
           </button>
           {editMode && (
             <button className="btn btn-danger" onClick={remove}>
