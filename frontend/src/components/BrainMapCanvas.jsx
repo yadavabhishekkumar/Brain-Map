@@ -212,6 +212,59 @@ function buildOutline(nodes) {
   return { aoa, sorted };
 }
 
+// Shared depth-based gradient (deep yellow -> faded yellow) and font-size ramp
+// (root -> leaf). Used by both the Excel export and the in-app table view.
+function depthGradient(maxDepth) {
+  const safe = Math.max(0, maxDepth || 0);
+  const tFor = (depth) => (safe <= 0 ? 0 : Math.min(1, depth / safe));
+  const hex2 = (v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase();
+  const colorFor = (depth) => {
+    const t = tFor(depth);
+    const g = 195 + (249 - 195) * t;
+    const b = 0 + (196 - 0) * t;
+    return `#${hex2(255)}${hex2(g)}${hex2(b)}`;
+  };
+  const sizeFor = (depth) => Math.round(20 - 10 * tFor(depth));
+  return { colorFor, sizeFor };
+}
+
+function TabularView({ nodes, onOpenCanvas }) {
+  const data = useMemo(() => buildTreeSheet(nodes), [nodes]);
+  const { colorFor, sizeFor } = depthGradient(data.maxDepth);
+  return (
+    <div className="tabular-view">
+      {data.rows.map((row, r) => (
+        <div
+          key={r}
+          className="tabular-row"
+          style={{ gridTemplateColumns: `repeat(${data.totalCols}, minmax(72px, 1fr))` }}
+        >
+          {row.map((cell, c) => {
+            if (!cell) return null;
+            const isLabel = r % 2 === 0;
+            const size = isLabel ? sizeFor(cell.depth) : Math.max(9, sizeFor(cell.depth) - 4);
+            return (
+              <div
+                key={c}
+                className={`tabular-cell${isLabel ? ' tabular-cell-label' : ' tabular-cell-desc'}${cell.linked ? ' tabular-cell-link' : ''}`}
+                style={{
+                  gridColumn: `span ${cell.span || 1}`,
+                  backgroundColor: colorFor(cell.depth),
+                  fontSize: `${size}px`,
+                }}
+                title={cell.linked ? 'Open linked canvas' : undefined}
+                onClick={cell.linked ? () => onOpenCanvas(cell.linked, cell.v) : undefined}
+              >
+                {cell.v}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function BrainMapCanvas(props) {
   return (
     <ReactFlowProvider>
@@ -228,6 +281,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [loading, setLoading] = useState(true);
   const [parentCanvases, setParentCanvases] = useState([]);
   const [zoomLock, setZoomLock] = useState(false);
+  const [tabularMode, setTabularMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
@@ -1255,6 +1309,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 Fit view
               </button>
               <button
+                className={`btn${tabularMode ? ' btn-tabular-active' : ''}`}
+                title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'}
+                onClick={() => setTabularMode((v) => !v)}
+              >
+                📊 Tabular Format
+              </button>
+              <button
                 className={`btn${zoomLock ? ' btn-zoom-lock-active' : ''}`}
                 title={
                   zoomLock
@@ -1317,7 +1378,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       </div>
 
       <div className="canvas-body">
-        <div className="canvas-flow">
+        {tabularMode ? (
+          <TabularView nodes={nodes} onOpenCanvas={onOpenCanvas} />
+        ) : (
+          <div className="canvas-flow">
           <ReactFlow
             nodes={visible.nodes}
             edges={visible.edges}
@@ -1429,9 +1493,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               onEdit={() => handleNodeDoubleClick(null, previewNode)}
             />
           )}
-        </div>
+          </div>
+        )}
 
-        {selectedNodeId && !studyMode && (
+        {!tabularMode && selectedNodeId && !studyMode && (
           <NodeEditor
             nodeId={selectedNodeId}
             nodes={nodes}
