@@ -646,8 +646,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       type: 'smoothstep',
       deletable: true,
       animated: true,
-      style: { stroke: '#a855f7', strokeWidth: 1.5, strokeDasharray: '6 6' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      style: { stroke: '#1a73e8', strokeWidth: 1.5, strokeDasharray: '6 6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#1a73e8' },
     }));
     return [...pc, ...cl];
   }, [nodes, edges]);
@@ -1412,7 +1412,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             <MiniMap
               pannable
               zoomable
-              nodeColor={(n) => (n.data && n.data.isRoot ? '#6d28d9' : '#818cf8')}
+              nodeColor={(n) => (n.data && n.data.isRoot ? '#1a73e8' : '#aecbfa')}
               maskColor="rgba(241,245,249,0.7)"
             />
           </ReactFlow>
