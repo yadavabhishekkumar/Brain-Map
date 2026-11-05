@@ -62,10 +62,10 @@ export const api = {
       body: JSON.stringify({ canvas_id: canvasId, prompt, node_id: nodeId || null, model }),
     }),
 
-  applyAIAnswer: (nodeId, text, action, mode = 'append') =>
+  applyAIAnswer: (nodeId, text, action, mode = 'append', model) =>
     request('/ai/apply', {
       method: 'POST',
-      body: JSON.stringify({ node_id: nodeId, text, action, mode, author: 'You' }),
+      body: JSON.stringify({ node_id: nodeId, text, action, mode, author: 'You', model }),
     }),
 
   listChats: (nodeId) => request(`/nodes/${nodeId}/chats`),

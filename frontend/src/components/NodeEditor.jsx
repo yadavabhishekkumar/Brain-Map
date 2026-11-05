@@ -231,7 +231,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     if (editMode || !answer.trim() || applyingAnswer) return;
     setApplyingAnswer(true);
     try {
-      await api.applyAIAnswer(nodeId, answer.trim(), action, mode);
+      await api.applyAIAnswer(nodeId, answer.trim(), action, mode, getAiModel());
       setPendingApply(null);
       await load();
       await onChanged();
