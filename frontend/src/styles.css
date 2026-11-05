@@ -223,6 +223,28 @@ select:focus {
   font-size: 14px;
 }
 
+.ai-model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a73e8;
+  background: #e8f0fe;
+  border: 1px solid #d2e3fc;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.ai-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .canvas-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
