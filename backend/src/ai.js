@@ -74,7 +74,8 @@ function resolveChatProvider(provider) {
         baseUrl: config.gemini.baseUrl,
         model: config.gemini.model,
         supportsEffort: false,
-        supportsTemperature: true,
+        // Gemini 2.5/3.x are "thinking" models and reject `temperature` (400).
+        supportsTemperature: false,
       };
     case 'deepseek-reasoner':
       return {
@@ -118,16 +119,23 @@ async function chatCompletion(messages, options = {}) {
   }
   if (options.json) payload.response_format = { type: 'json_object' };
 
-  const resp = await axios.post(url, payload, {
-    headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-    timeout: 180000,
-  });
+  try {
+    const resp = await axios.post(url, payload, {
+      headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
+      timeout: 180000,
+    });
 
-  const content =
-    resp.data && resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message
-      ? resp.data.choices[0].message.content
-      : '';
-  return { content: String(content || '').trim(), raw: resp.data };
+    const content =
+      resp.data && resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message
+        ? resp.data.choices[0].message.content
+        : '';
+    return { content: String(content || '').trim(), raw: resp.data };
+  } catch (e) {
+    if (e.response && e.response.data) {
+      console.error('[ai] provider error:', JSON.stringify(e.response.data).slice(0, 1000));
+    }
+    throw e;
+  }
 }
 
 module.exports = { extractText, extractWithVision, extractWithTesseract, chatCompletion };
