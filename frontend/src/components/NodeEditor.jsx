@@ -305,29 +305,6 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     }
   };
 
-  const exportNode = async () => {
-    if (tempNode) {
-      alert('This node is new — save the canvas first to export it.');
-      return;
-    }
-    if (
-      !window.confirm(
-        'Export this topic and its children to a new linked canvas? The children will move to the new canvas.'
-      )
-    )
-      return;
-    setExporting(true);
-    try {
-      await api.exportNode(nodeId);
-      await load();
-      await onChanged();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const openChat = (chat) => {
     setQuestion(chat.question);
     setAnswer(chat.answer);
