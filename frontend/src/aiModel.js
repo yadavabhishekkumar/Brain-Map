@@ -1,4 +1,5 @@
 const KEY = 'upsc_ai_model';
+const listeners = new Set();
 
 export const AI_MODELS = [
   { id: 'deepseek', label: 'DeepSeek' },
@@ -17,4 +18,16 @@ export function setAiModel(id) {
   } catch (e) {
     // ignore
   }
+  listeners.forEach((cb) => {
+    try {
+      cb(id);
+    } catch (e) {
+      // ignore listener errors
+    }
+  });
+}
+
+export function subscribeAiModel(cb) {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
