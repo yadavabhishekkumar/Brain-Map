@@ -76,6 +76,7 @@ function resolveChatProvider(provider) {
         supportsEffort: false,
         // Gemini 2.5/3.x are "thinking" models and reject `temperature` (400).
         supportsTemperature: false,
+        supportsResponseFormat: true,
       };
     case 'deepseek-reasoner':
       return {
@@ -85,6 +86,9 @@ function resolveChatProvider(provider) {
         model: 'deepseek-reasoner',
         supportsEffort: false,
         supportsTemperature: false,
+        // Reasoner does not support structured JSON output, and caps output lower.
+        supportsResponseFormat: false,
+        maxTokensCap: 8000,
       };
     case 'deepseek':
     default:
@@ -95,6 +99,7 @@ function resolveChatProvider(provider) {
         model: config.deepseek.model,
         supportsEffort: true,
         supportsTemperature: true,
+        supportsResponseFormat: true,
       };
   }
 }
@@ -106,10 +111,12 @@ async function chatCompletion(messages, options = {}) {
   }
   const model = options.model || provider.model;
   const url = `${provider.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  let maxTokens = options.maxTokens || 2000;
+  if (provider.maxTokensCap) maxTokens = Math.min(maxTokens, provider.maxTokensCap);
   const payload = {
     model,
     messages,
-    max_tokens: options.maxTokens || 2000,
+    max_tokens: maxTokens,
   };
   // DeepSeek V4 models accept an "effort" level (low / high / max).
   if (provider.supportsEffort && options.effort) payload.effort = options.effort;
@@ -117,7 +124,9 @@ async function chatCompletion(messages, options = {}) {
   if (provider.supportsTemperature && !options.effort) {
     payload.temperature = options.temperature !== undefined ? options.temperature : 0.2;
   }
-  if (options.json) payload.response_format = { type: 'json_object' };
+  if (options.json && provider.supportsResponseFormat) {
+    payload.response_format = { type: 'json_object' };
+  }
 
   try {
     const resp = await axios.post(url, payload, {
