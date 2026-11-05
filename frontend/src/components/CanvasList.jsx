@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import MicButton from './MicButton';
+import { AI_MODELS, getAiModel, setAiModel } from '../aiModel';
 
 export default function CanvasList({ onOpen, onOpenEpaper }) {
   const [canvases, setCanvases] = useState([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [aiModel, setAiModelState] = useState(getAiModel());
 
   const load = async () => {
     try {
@@ -136,6 +138,24 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
             {creating ? 'Creating…' : '＋ Create a blank Canvas'}
           </button>
         </div>
+      </div>
+
+      <div className="ai-model-selector">
+        <label htmlFor="ai-model">🤖 Default AI model</label>
+        <select
+          id="ai-model"
+          value={aiModel}
+          onChange={(e) => {
+            setAiModel(e.target.value);
+            setAiModelState(e.target.value);
+          }}
+        >
+          {AI_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="epaper-banner">

@@ -33,7 +33,7 @@ async function buildAncestorContext(nodeId) {
 // POST /api/ai/ask  { node_id, question }
 router.post('/ask', async (req, res, next) => {
   try {
-    const { node_id, question } = req.body || {};
+    const { node_id, question, model } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!question || !question.trim()) return res.status(400).json({ error: 'question is required' });
 
@@ -52,7 +52,7 @@ router.post('/ask', async (req, res, next) => {
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { maxTokens: 2000, temperature: 0.2 });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 2000, temperature: 0.2 });
 
     const chatId = uuid();
     await pool.query(
@@ -76,6 +76,46 @@ const BUILD_SYSTEM =
   '100 total nodes; the root label should reflect the overall theme. The response MUST be one complete, ' +
   'valid JSON object — never truncate mid-object. If the subject is too large to cover fully, include ' +
   'the most important topics rather than cutting the JSON off.';
+
+const MAP_FROM_ANSWER_SYSTEM =
+  'You are an expert UPSC syllabus mind-map generator. Convert the provided answer text into a ' +
+  'structured brain-map tree. Respond with ONLY a valid JSON object (no markdown fences, no extra text) ' +
+  'in exactly this shape:\n' +
+  '{"root":{"label":"string","content":"string","children":[{"label":"string","content":"string","children":[]}]}}\n' +
+  'Rules:\n' +
+  '- "label" is a concise topic title (max 8 words) — this becomes the NODE NAME.\n' +
+  '- "content" is a 1-3 sentence description or the key points — this becomes the NODE NOTES. ' +
+  'Do NOT leave content empty when the answer provides detail.\n' +
+  '- Turn the answer\'s main idea into "root"; turn each top-level bullet/sub-topic into a child node; ' +
+  'turn nested bullets into nested children.\n' +
+  '- Keep maximum depth 6 and maximum 40 nodes. Respond with one complete, valid JSON object.';
+
+// Use the AI itself to turn an answer into a structured map tree.
+async function generateMapTree(text, provider) {
+  const messages = [
+    { role: 'system', content: MAP_FROM_ANSWER_SYSTEM },
+    { role: 'user', content: `Answer text:\n\n${String(text || '').trim()}` },
+  ];
+  const { content } = await ai.chatCompletion(messages, {
+    provider,
+    maxTokens: 12000,
+    temperature: 0.2,
+    json: true,
+  });
+  return parseTree(content);
+}
+
+// Flatten an answer into nodes, falling back to the heuristic parser if AI fails.
+async function buildFlatFromAnswer(text, provider) {
+  try {
+    const tree = await generateMapTree(text, provider);
+    return flatten(tree);
+  } catch (e) {
+    console.warn('[ai/apply] AI map generation failed, falling back to text parser:', e.message);
+    const parsed = parseExtractedText(text);
+    return parsed.length ? parsedToFlat(parsed) : [];
+  }
+}
 
 // Flatten a nested tree into [{label, content, parentRef, depth}] (parentRef = index in list, -1 = root)
 function flatten(root, list = [], parentRef = -1, depth = 0) {
@@ -134,7 +174,7 @@ function computePositions(flat) {
 // POST /api/ai/build  { canvas_id, prompt, node_id? }
 router.post('/build', async (req, res, next) => {
   try {
-    const { canvas_id, prompt, node_id } = req.body || {};
+    const { canvas_id, prompt, node_id, model } = req.body || {};
     if (!canvas_id) return res.status(400).json({ error: 'canvas_id is required' });
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
 
@@ -155,6 +195,7 @@ router.post('/build', async (req, res, next) => {
       { role: 'user', content: `User request:\n${prompt.trim()}` },
     ];
     const { content } = await ai.chatCompletion(messages, {
+      provider: model,
       maxTokens: 12000,
       temperature: 0.2,
       json: true,
@@ -234,7 +275,7 @@ function buildSeparator(author) {
 // Applies an AI answer into the brain map.
 router.post('/apply', async (req, res, next) => {
   try {
-    const { node_id, text, action, mode, author } = req.body || {};
+    const { node_id, text, action, mode, author, model } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
@@ -286,11 +327,10 @@ router.post('/apply', async (req, res, next) => {
     }
 
     if (action === 'map') {
-      const parsed = parseExtractedText(text);
-      if (!parsed.length) {
-        return res.status(400).json({ error: 'Could not parse the response into topics.' });
+      const flat = await buildFlatFromAnswer(text, model);
+      if (!flat.length) {
+        return res.status(400).json({ error: 'Could not generate a map from this answer.' });
       }
-      const flat = parsedToFlat(parsed);
       const positions = computePositions(flat);
       const idByIndex = [];
       for (let i = 0; i < flat.length; i++) {
@@ -299,12 +339,13 @@ router.post('/apply', async (req, res, next) => {
         const id = uuid();
         await pool.query(
           `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
-           VALUES ($1,$2,$3,$4,'',$5,$6,$7)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [
             id,
             rootNode.canvas_id,
             parentId,
             item.label,
+            item.content,
             rootNode.x + 260 + positions[i].x,
             rootNode.y + positions[i].y,
             rootNode.depth + 1 + item.depth,
@@ -318,9 +359,9 @@ router.post('/apply', async (req, res, next) => {
     }
 
     if (action === 'canvas') {
-      const parsed = parseExtractedText(text);
-      if (!parsed.length) {
-        return res.status(400).json({ error: 'Could not parse the response into topics.' });
+      const flat = await buildFlatFromAnswer(text, model);
+      if (!flat.length) {
+        return res.status(400).json({ error: 'Could not generate a map from this answer.' });
       }
 
       // Derive a readable name + short description for the new canvas.
@@ -329,15 +370,17 @@ router.post('/apply', async (req, res, next) => {
         .map((l) => l.trim())
         .filter(Boolean);
       const canvasName =
+        (flat[0] && flat[0].label ? String(flat[0].label).slice(0, 100) : '') ||
         (rawLines[0] || '')
           .replace(/^#{1,6}\s*/, '')
           .replace(/^[-*•▪◦▫]\s*/, '')
           .replace(/^\d{1,2}[.)]\s*/, '')
           .trim()
-          .slice(0, 100) || `${rootNode.label} — Map`;
+          .slice(0, 100) ||
+        `${rootNode.label} — Map`;
       const description = rawLines.slice(0, 3).join(' ').slice(0, 240);
 
-      // 1) Create the new canvas and populate it with the parsed map.
+      // 1) Create the new canvas and populate it with the generated map.
       const newCanvasId = uuid();
       await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
         newCanvasId,
@@ -345,7 +388,6 @@ router.post('/apply', async (req, res, next) => {
         description,
       ]);
 
-      const flat = parsedToFlat(parsed);
       const positions = computePositions(flat);
       const idByIndex = [];
       for (let i = 0; i < flat.length; i++) {
@@ -354,8 +396,8 @@ router.post('/apply', async (req, res, next) => {
         const id = uuid();
         await pool.query(
           `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth)
-           VALUES ($1,$2,$3,$4,'',$5,$6,$7)`,
-          [id, newCanvasId, parentId, item.label, positions[i].x, positions[i].y, item.depth]
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [id, newCanvasId, parentId, item.label, item.content, positions[i].x, positions[i].y, item.depth]
         );
         idByIndex[i] = id;
         await indexNode(id);

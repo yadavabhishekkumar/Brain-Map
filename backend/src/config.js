@@ -30,4 +30,10 @@ module.exports = {
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
   },
+  // Google Gemini (exposed through its OpenAI-compatible endpoint).
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || '',
+    baseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
+    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  },
 };

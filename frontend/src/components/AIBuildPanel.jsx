@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import MicButton from './MicButton';
+import AiModelBadge from './AiModelBadge';
+import { getAiModel } from '../aiModel';
 
 export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose }) {
   const [prompt, setPrompt] = useState('');
@@ -12,7 +14,7 @@ export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose 
     setBusy(true);
     setError('');
     try {
-      await api.aiBuild(canvasId, prompt.trim(), selectedNode ? selectedNode.id : null);
+      await api.aiBuild(canvasId, prompt.trim(), selectedNode ? selectedNode.id : null, getAiModel());
       await onBuilt();
       onClose();
     } catch (e) {
@@ -25,7 +27,10 @@ export default function AIBuildPanel({ canvasId, selectedNode, onBuilt, onClose 
   return (
     <div className="ai-panel">
       <div className="ai-panel-header">
-        <strong>🤖 Build your brain map with AI</strong>
+        <div className="ai-panel-title">
+          <strong>🤖 Build your brain map with AI</strong>
+          <AiModelBadge />
+        </div>
         <button className="btn btn-ghost" onClick={onClose}>
           ✕
         </button>

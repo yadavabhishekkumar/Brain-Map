@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { renderMarkdown } from '../markdown';
 import MicButton from './MicButton';
+import AiModelBadge from './AiModelBadge';
+import { getAiModel } from '../aiModel';
 
 export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
@@ -232,7 +234,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     setAsking(true);
     setAnswer('');
     try {
-      const r = await api.askAI(nodeId, question.trim());
+      const r = await api.askAI(nodeId, question.trim(), getAiModel());
       setAnswer(r.answer);
     } catch (err) {
       alert(err.message);
@@ -253,7 +255,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     if (editMode || !answer.trim() || applyingAnswer) return;
     setApplyingAnswer(true);
     try {
-      await api.applyAIAnswer(nodeId, answer.trim(), action, mode);
+      await api.applyAIAnswer(nodeId, answer.trim(), action, mode, getAiModel());
       setPendingApply(null);
       await load();
       await onChanged();
@@ -432,7 +434,9 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           </div>
         )}
 
-        <h4>🤖 Ask AI about this topic</h4>
+        <h4>
+          🤖 Ask AI about this topic <AiModelBadge />
+        </h4>
         <div className="ai-ask">
           <div className="voice-field">
             <textarea

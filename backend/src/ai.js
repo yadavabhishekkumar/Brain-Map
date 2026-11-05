@@ -64,28 +64,62 @@ async function extractText(buffer, mimeType, mode = 'auto') {
   return extractWithTesseract(buffer);
 }
 
-async function chatCompletion(messages, options = {}) {
-  const key = config.deepseek.apiKey;
-  if (!key) {
-    throw new Error('No DEEPSEEK_API_KEY configured. Add it to backend/.env (DEEPSEEK_API_KEY=...)');
+// Resolve a chat provider from the user-selected model id.
+function resolveChatProvider(provider) {
+  switch (provider) {
+    case 'gemini':
+      return {
+        name: 'gemini',
+        key: config.gemini.apiKey,
+        baseUrl: config.gemini.baseUrl,
+        model: config.gemini.model,
+        supportsEffort: false,
+        supportsTemperature: true,
+      };
+    case 'deepseek-reasoner':
+      return {
+        name: 'deepseek-reasoner',
+        key: config.deepseek.apiKey,
+        baseUrl: config.deepseek.baseUrl,
+        model: 'deepseek-reasoner',
+        supportsEffort: false,
+        supportsTemperature: false,
+      };
+    case 'deepseek':
+    default:
+      return {
+        name: 'deepseek',
+        key: config.deepseek.apiKey,
+        baseUrl: config.deepseek.baseUrl,
+        model: config.deepseek.model,
+        supportsEffort: true,
+        supportsTemperature: true,
+      };
   }
-  const model = options.model || config.deepseek.model;
-  const url = `${config.deepseek.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
+
+async function chatCompletion(messages, options = {}) {
+  const provider = resolveChatProvider(options.provider);
+  if (!provider.key) {
+    throw new Error(`No API key configured for "${provider.name}". Add it to backend/.env.`);
+  }
+  const model = options.model || provider.model;
+  const url = `${provider.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const payload = {
     model,
     messages,
     max_tokens: options.maxTokens || 2000,
   };
   // DeepSeek V4 models accept an "effort" level (low / high / max).
-  if (options.effort) payload.effort = options.effort;
-  // Older models accept temperature; deepseek-reasoner does not.
-  if (!options.effort && model !== 'deepseek-reasoner') {
+  if (provider.supportsEffort && options.effort) payload.effort = options.effort;
+  // Reasoner models don't accept temperature; the others do.
+  if (provider.supportsTemperature && !options.effort) {
     payload.temperature = options.temperature !== undefined ? options.temperature : 0.2;
   }
   if (options.json) payload.response_format = { type: 'json_object' };
 
   const resp = await axios.post(url, payload, {
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
     timeout: 180000,
   });
 
