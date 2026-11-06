@@ -1661,8 +1661,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       )}
 
       {studyMode && (
-        <button className="btn study-exit" onClick={() => setStudyMode(false)}>
-          ✕ Exit Study Mode
+        <button className="btn study-exit" onClick={() => setStudyMode(false)} title="Exit Study Mode" aria-label="Exit Study Mode">
+          ✕
         </button>
       )}
     </div>
