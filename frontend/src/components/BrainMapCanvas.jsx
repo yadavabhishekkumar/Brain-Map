@@ -396,7 +396,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [focusMode, setFocusMode] = useState(false);
   const [focusedNodeIds, setFocusedNodeIds] = useState([]);
-  const [studyMode, setStudyMode] = useState(false);
+  const [fullscreenMode, setFullscreenMode] = useState(false);
+  const [freezeNodes, setFreezeNodes] = useState(true);
+  const [floatingControlsVisible, setFloatingControlsVisible] = useState(true);
+  const hideControlsTimer = useRef(null);
   const [alignMode, setAlignMode] = useState(false);
   const [alignLines, setAlignLines] = useState([]);
   const [connectMode, setConnectMode] = useState(false);
@@ -1339,6 +1342,32 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setSelectedNodeId(null);
   }, []);
 
+  // Mobile only: auto-hide the floating controls (zoom / fullscreen / freeze)
+  // after 5s; tapping the bottom-left zone (of a 4x4 grid) brings them back.
+  const scheduleHideControls = useCallback(() => {
+    clearTimeout(hideControlsTimer.current);
+    hideControlsTimer.current = setTimeout(() => {
+      setFloatingControlsVisible(false);
+    }, 5000);
+  }, []);
+
+  const handleShellPointerDown = useCallback(
+    (e) => {
+      if (window.innerWidth > 768) return;
+      const inBottomLeft = e.clientX < window.innerWidth / 4 && e.clientY > (window.innerHeight * 3) / 4;
+      if (inBottomLeft) {
+        setFloatingControlsVisible(true);
+        scheduleHideControls();
+      }
+    },
+    [scheduleHideControls]
+  );
+
+  useEffect(() => {
+    if (window.innerWidth <= 768) scheduleHideControls();
+    return () => clearTimeout(hideControlsTimer.current);
+  }, [scheduleHideControls]);
+
   const handlePaneClick = useCallback(() => {
     closePanels();
   }, [closePanels]);
@@ -1411,7 +1440,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }
 
   return (
-    <div className={`canvas-shell${editMode ? ' edit-mode' : ''}${studyMode ? ' study-mode' : ''}${focusMode ? ' focus-mode' : ''}`}>
+    <div
+      className={`canvas-shell${editMode ? ' edit-mode' : ''}${fullscreenMode ? ' fullscreen-mode' : ''}${focusMode ? ' focus-mode' : ''}${floatingControlsVisible ? '' : ' controls-hidden'}`}
+      onPointerDown={handleShellPointerDown}
+    >
       <div className="canvas-topbar">
         <button className="btn icon-btn" onClick={onBack} title="Back to canvases" aria-label="Back to canvases">
           <span aria-hidden="true">←</span>
@@ -1454,7 +1486,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             {!editMode ? (
               <>
                 <ToolIcon glyph="🔍" label="Find topics" title="Search" active={searchOpen} onActivate={() => setSearchOpen((o) => !o)} />
-                <ToolIcon glyph="⛶" label="Fit screen" title="Fit the whole tree to the screen" onActivate={fitToScreen} />
+                <ToolIcon glyph="⤢" label="Fit screen" title="Fit the whole tree to the screen" onActivate={fitToScreen} />
                 <ToolIcon glyph="🔃" label="Rotate view" title="Rotate the tree 90° (top-down)" active={vertical} onActivate={() => setVertical((v) => !v)} />
                 <ToolIcon glyph="📊" label="Table view" title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'} active={tabularMode} onActivate={() => setTabularMode((v) => !v)} />
                 <ToolIcon glyph={zoomLock ? '🔒' : '🔓'} label={zoomLock ? 'Unlock zoom' : 'Lock zoom'} title={zoomLock ? 'Zoom lock ON — scroll to pan the canvas' : 'Zoom lock OFF — scroll to zoom'} active={zoomLock} onActivate={() => setZoomLock((v) => !v)} />
@@ -1463,7 +1495,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <ToolIcon glyph="⬇️" label="Export Excel" title="Download as Excel workbook" onActivate={exportExcel} />
                 <ToolIcon glyph="✏️" label="Edit mode" title="Edit canvas" onActivate={enterEditMode} />
                 <ToolIcon glyph="🎯" label="Focus mode" title="Focus Mode" onActivate={() => { setFocusedNodeIds([]); setFocusMode(true); }} />
-                <ToolIcon glyph="🖥️" label="Study mode" title="Study Mode" onActivate={() => setStudyMode(true)} />
               </>
             ) : (
               <>
@@ -1507,7 +1538,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             panOnScroll={zoomLock}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!studyMode && !alignMode && !connectMode && !vertical && compress === 1}
+            nodesDraggable={!freezeNodes && !alignMode && !connectMode && !vertical && compress === 1}
             nodesConnectable={!editMode || connectMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
@@ -1526,6 +1557,30 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
+          <div className="canvas-floating-actions">
+            <button
+              className={`floating-btn${fullscreenMode ? ' floating-btn-active' : ''}`}
+              onClick={() => setFullscreenMode((v) => !v)}
+              title={fullscreenMode ? 'Exit Full Screen' : 'Full Screen Mode'}
+              aria-label="Full Screen Mode"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+              </svg>
+            </button>
+            <button
+              className={`floating-btn${freezeNodes ? ' floating-btn-active' : ''}`}
+              onClick={() => setFreezeNodes((v) => !v)}
+              title={freezeNodes ? 'Unfreeze Nodes' : 'Freeze Nodes'}
+              aria-label="Freeze Nodes"
+            >
+              ❄️
+            </button>
+          </div>
+
           <ZoomControl />
 
           {alignMode && (
@@ -1537,7 +1592,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
-          {!studyMode && editMode && (
+          {!fullscreenMode && editMode && (
             <div className="canvas-toolbar">
               <button
                 className={`btn${connectMode ? ' btn-connect-active' : ''}`}
@@ -1554,11 +1609,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             </div>
           )}
 
-          {!studyMode && searchOpen && (
+          {!fullscreenMode && searchOpen && (
             <SearchBar canvasId={canvasId} onFocus={focusNode} onClose={() => setSearchOpen(false)} />
           )}
 
-          {!studyMode && linkModalOpen && (
+          {!fullscreenMode && linkModalOpen && (
             <LinkCanvasModal
               currentCanvasId={canvasId}
               parentId={selectedNodeId}
@@ -1567,7 +1622,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
-          {!studyMode && aiPanelOpen && (
+          {!fullscreenMode && aiPanelOpen && (
             <AIBuildPanel
               canvasId={canvasId}
               selectedNode={nodes.find((n) => n.id === selectedNodeId) || null}
@@ -1589,7 +1644,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           </div>
         )}
 
-        {!tabularMode && selectedNodeId && !studyMode && (
+        {!tabularMode && selectedNodeId && !fullscreenMode && (
           <NodeEditor
             nodeId={selectedNodeId}
             nodes={nodes}
@@ -1607,7 +1662,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         )}
       </div>
 
-      {focusMode && !studyMode && (
+      {focusMode && !fullscreenMode && (
         <div className="focus-bar">
           <span className="focus-bar-title">🎯 Focus</span>
           <FocusSearch canvasId={canvasId} onSelect={handleFocusSelect} />
@@ -1660,8 +1715,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         </div>
       )}
 
-      {studyMode && (
-        <button className="btn study-exit" onClick={() => setStudyMode(false)} title="Exit Study Mode" aria-label="Exit Study Mode">
+      {fullscreenMode && (
+        <button className="btn fullscreen-exit" onClick={() => setFullscreenMode(false)} title="Exit Full Screen" aria-label="Exit Full Screen">
           ✕
         </button>
       )}
