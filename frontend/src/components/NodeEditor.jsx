@@ -149,7 +149,11 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     const parts = [];
     ancestors.forEach((a) => parts.push(fmt(a)));
     parts.push(fmt(self));
-    return parts.join('\n\n');
+    const intro =
+      'The study context below is derived from a mind-map knowledge graph. ' +
+      'Topics are listed in tree order — starting with the root topic, then its child topics, then their children, and so on. ' +
+      'Each topic has a Title followed by its Description.';
+    return `${intro}\n\n${parts.join('\n\n')}`;
   }, [nodeId]);
 
   useEffect(() => {
