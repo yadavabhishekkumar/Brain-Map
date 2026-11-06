@@ -726,10 +726,23 @@ body.resizing {
 /* Account bar + visibility badges */
 .account-bar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.account-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.visibility-filter {
+  display: flex;
+  gap: 6px;
 }
 
 .account-name {

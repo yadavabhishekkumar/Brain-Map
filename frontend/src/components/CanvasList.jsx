@@ -9,6 +9,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiModel, setAiModelState] = useState(getAiModel());
+  const [filter, setFilter] = useState('all'); // 'all' | 'private'
 
   const load = async () => {
     try {
@@ -60,12 +61,18 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     }
   };
 
+  // Visible canvases after the public/private filter.
+  const visibleCanvases = useMemo(() => {
+    if (filter === 'private') return canvases.filter((c) => !c.is_public);
+    return canvases;
+  }, [canvases, filter]);
+
   // Build a parent/child tree from linked canvases so related canvases nest.
   const { childrenMap, roots } = useMemo(() => {
-    const byId = new Map(canvases.map((c) => [c.id, c]));
+    const byId = new Map(visibleCanvases.map((c) => [c.id, c]));
     const childrenMap = new Map();
     const roots = [];
-    for (const c of canvases) {
+    for (const c of visibleCanvases) {
       const parentId =
         c.linked_from_canvas_id && byId.has(c.linked_from_canvas_id) ? c.linked_from_canvas_id : null;
       if (parentId) {
@@ -76,7 +83,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
       }
     }
     return { childrenMap, roots };
-  }, [canvases]);
+  }, [visibleCanvases]);
 
   const formatDate = (iso) => {
     const d = new Date(iso);
@@ -136,14 +143,24 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
   return (
     <div className="canvas-list-page">
       <div className="account-bar">
-        {user ? (
-          <>
-            <span className="account-name">👤 {user.name || user.email}</span>
-            <button className="btn btn-sm" onClick={onSignOut}>Sign out</button>
-          </>
-        ) : (
-          <button className="btn btn-sm btn-primary" onClick={onSignIn}>Sign in / Sign up</button>
-        )}
+        <div className="visibility-filter">
+          {user && (
+            <>
+              <button className={`btn btn-sm${filter === 'all' ? ' btn-primary' : ''}`} onClick={() => setFilter('all')}>All maps</button>
+              <button className={`btn btn-sm${filter === 'private' ? ' btn-primary' : ''}`} onClick={() => setFilter('private')}>🔒 Private</button>
+            </>
+          )}
+        </div>
+        <div className="account-bar-actions">
+          {user ? (
+            <>
+              <span className="account-name">👤 {user.name || user.email}</span>
+              <button className="btn btn-sm" onClick={onSignOut}>Sign out</button>
+            </>
+          ) : (
+            <button className="btn btn-sm btn-primary" onClick={onSignIn}>Sign in / Sign up</button>
+          )}
+        </div>
       </div>
 
       <div className="hero">
