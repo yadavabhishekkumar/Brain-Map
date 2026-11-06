@@ -23,6 +23,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [activeAttachmentId, setActiveAttachmentId] = useState(null);
   const [applying, setApplying] = useState(false);
   const [question, setQuestion] = useState('');
+  const [context, setContext] = useState('');
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
   const [applyingAnswer, setApplyingAnswer] = useState(false);
@@ -122,6 +123,38 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   useEffect(() => {
     load();
   }, [load]);
+
+  // Build an editable study-context string from this node's title/description
+  // and its ancestors (parent topics) — passed along with the user's question.
+  const buildContext = useCallback(() => {
+    const list = nodesRef.current;
+    const byId = new Map(list.map((n) => [n.id, n]));
+    const self = byId.get(nodeId);
+    if (!self) return '';
+
+    const ancestors = [];
+    let pid = self.data && self.data.parent_id;
+    while (pid && byId.has(pid)) {
+      const p = byId.get(pid);
+      ancestors.unshift(p);
+      pid = p.data && p.data.parent_id;
+    }
+
+    const fmt = (n) => {
+      const label = (n.data && n.data.label) || n.label || '';
+      const content = (n.data && n.data.content) || n.content || '';
+      return `Title: ${label}\nDescription: ${content || '(no description)'}`;
+    };
+
+    const parts = [];
+    ancestors.forEach((a) => parts.push(fmt(a)));
+    parts.push(fmt(self));
+    return parts.join('\n\n');
+  }, [nodeId]);
+
+  useEffect(() => {
+    setContext(buildContext());
+  }, [buildContext]);
 
   const save = async () => {
     if (editMode) return;
@@ -240,7 +273,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     setAsking(true);
     setAnswer('');
     try {
-      const r = await api.askAI(nodeId, question.trim(), getAiModel());
+      const r = await api.askAI(nodeId, question.trim(), getAiModel(), context);
       setAnswer(r.answer);
     } catch (err) {
       alert(err.message);
@@ -458,12 +491,26 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           🤖 Ask AI about this topic <AiModelBadge />
         </h4>
         <div className="ai-ask">
+          <div className="ai-context">
+            <div className="ai-context-label">
+              <span>Study context (editable)</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setContext(buildContext())} title="Re-syncs the context to the latest nodes (includes new nodes, removes deleted ones)">
+                ↺ Reset
+              </button>
+            </div>
+            <textarea
+              rows={6}
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="Aggregated node titles and descriptions appear here."
+            />
+          </div>
           <div className="voice-field">
             <textarea
               rows={2}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question (context = this topic + its parent topics)"
+              placeholder="Ask a question (context = this topic + related topics)"
             />
             <MicButton onText={(t) => setQuestion((v) => (v ? v + ' ' + t : t))} />
           </div>

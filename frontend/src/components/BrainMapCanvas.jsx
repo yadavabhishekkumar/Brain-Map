@@ -1571,6 +1571,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             <AIBuildPanel
               canvasId={canvasId}
               selectedNode={nodes.find((n) => n.id === selectedNodeId) || null}
+              nodes={nodes}
               onBuilt={load}
               onClose={() => setAiPanelOpen(false)}
             />
