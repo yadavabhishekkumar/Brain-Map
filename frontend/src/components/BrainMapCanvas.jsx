@@ -1406,7 +1406,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const sy = base.y * compress * zoom + viewport.y;
     previewStyle = {
       left: Math.max(8, Math.min(sx + 150, Math.max(8, window.innerWidth - 430))),
-      top: Math.max(8, Math.min(sy - 24, Math.max(8, window.innerHeight - 440))),
+      top: Math.max(44, Math.min(sy - 24, Math.max(44, window.innerHeight - 440))),
     };
   }
 
@@ -1583,7 +1583,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               left={previewStyle.left}
               top={previewStyle.top}
               onClose={closePanels}
-              onEdit={() => handleNodeDoubleClick(null, previewNode)}
+              onChanged={load}
             />
           )}
           </div>

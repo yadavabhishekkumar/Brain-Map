@@ -1089,11 +1089,15 @@ mark {
 }
 
 /* ---------- Read-only node preview (single click) ---------- */
-.node-preview {
+.node-preview-wrap {
   position: absolute;
   z-index: 20;
   width: 400px;
   max-width: calc(100vw - 40px);
+}
+
+.node-preview {
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1129,6 +1133,36 @@ mark {
   overflow-y: auto;
   font-size: 14px;
   line-height: 1.55;
+}
+
+.node-preview-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-preview-editor textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.node-preview-editor textarea:focus {
+  border-color: var(--primary);
+}
+
+.node-preview-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .md-heading {
@@ -2037,12 +2071,20 @@ mark {
   overflow-y: auto;
 }
 
-/* ---------- Node preview actions (mobile: tap → Edit) ---------- */
+/* ---------- Node preview actions (floating top-right) ---------- */
 .node-preview-actions {
+  position: absolute;
+  top: -36px;
+  right: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
+  gap: 6px;
+  z-index: 1;
+}
+
+.node-preview-actions .btn {
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
 }
 
 .node-preview-edit {
@@ -2201,7 +2243,7 @@ mark {
   }
 
   /* Node preview fills the width */
-  .node-preview {
+  .node-preview-wrap {
     width: calc(100vw - 24px);
     max-width: none;
   }
