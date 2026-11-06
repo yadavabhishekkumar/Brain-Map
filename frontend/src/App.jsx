@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import CanvasList from './components/CanvasList';
 import BrainMapCanvas from './components/BrainMapCanvas';
 import Epaper from './components/Epaper';
+import AuthPage from './components/AuthPage';
+import { api } from './api';
+import { getUser, setAuth, clearAuth, getToken } from './auth';
 
 function safeDecode(s) {
   try {
@@ -31,6 +34,15 @@ function parseHash() {
 
 export default function App() {
   const [view, setView] = useState(parseHash);
+  const [user, setUser] = useState(getUser());
+  const [showAuth, setShowAuth] = useState(false);
+
+  // Validate any stored token on load.
+  useEffect(() => {
+    if (getToken()) {
+      api.me().then((r) => setUser(r.user)).catch(() => { clearAuth(); setUser(null); });
+    }
+  }, []);
 
   // Keep state in sync with the URL (browser back/forward, manual hash edits).
   useEffect(() => {
@@ -49,6 +61,21 @@ export default function App() {
     }
     setView(next);
   };
+
+  const handleAuthed = useCallback((token, authedUser) => {
+    setAuth(token, authedUser);
+    setUser(authedUser);
+    setShowAuth(false);
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    clearAuth();
+    setUser(null);
+  }, []);
+
+  if (showAuth) {
+    return <AuthPage onAuthed={handleAuthed} onClose={() => setShowAuth(false)} />;
+  }
 
   if (view.type === 'canvas') {
     return (
@@ -72,8 +99,11 @@ export default function App() {
 
   return (
     <CanvasList
+      user={user}
       onOpen={(id, name) => navigate({ type: 'canvas', id, name })}
       onOpenEpaper={() => navigate({ type: 'epaper' })}
+      onSignIn={() => setShowAuth(true)}
+      onSignOut={handleSignOut}
     />
   );
 }

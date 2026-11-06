@@ -4,10 +4,21 @@ const config = require('./config');
 const pool = new Pool({ connectionString: config.databaseUrl, max: 10 });
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  password_hash TEXT,
+  google_id TEXT,
+  avatar TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS canvases (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -81,6 +92,10 @@ async function initSchema() {
   // Migration for databases created before the linked_canvas_id column existed.
   await pool.query(
     `ALTER TABLE nodes ADD COLUMN IF NOT EXISTS linked_canvas_id UUID REFERENCES canvases(id) ON DELETE SET NULL`
+  );
+  // Migration for databases created before user accounts / ownership existed.
+  await pool.query(
+    `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id) ON DELETE CASCADE`
   );
 }
 

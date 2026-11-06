@@ -8,7 +8,7 @@ import { getAiModel } from '../aiModel';
 const DEFAULT_REARRANGE_PROMPT =
   'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes and description, Connect them based on their relationship. If they are independent, then should exist parallel to each other. If they are somehow connected then connect them sequentially.';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, width, onResize, tempNode }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, onMergeNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -31,6 +31,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [showChats, setShowChats] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [mergeChoiceOpen, setMergeChoiceOpen] = useState(false);
   const [rearrangePrompt, setRearrangePrompt] = useState(DEFAULT_REARRANGE_PROMPT);
   const [rearrangeMode, setRearrangeMode] = useState('keep');
   const [rearranging, setRearranging] = useState(false);
@@ -177,6 +178,11 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const remove = () => {
     if (!window.confirm('Delete this node and its entire subtree?')) return;
     onDeleteNode(nodeId);
+    onClose();
+  };
+
+  const mergeIntoParent = (mode) => {
+    onMergeNode(nodeId, mode);
     onClose();
   };
 
@@ -416,6 +422,22 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>
             {exporting ? 'Exporting…' : '📤 Export to new canvas'}
           </button>
+          {editMode && node.parent_id && (
+            !mergeChoiceOpen ? (
+              <button className="btn" onClick={() => setMergeChoiceOpen(true)}>
+                🧲 Merge into parent
+              </button>
+            ) : (
+              <div className="merge-choice">
+                <span className="muted">Merge into parent — keep this node's info?</span>
+                <div className="merge-choice-actions">
+                  <button className="btn btn-sm" onClick={() => mergeIntoParent('drop')}>🗑 Drop info</button>
+                  <button className="btn btn-sm btn-primary" onClick={() => mergeIntoParent('append')}>📎 Append to parent</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setMergeChoiceOpen(false)}>✕</button>
+                </div>
+              </div>
+            )
+          )}
           {editMode && (
             <button className="btn btn-danger" onClick={remove}>
               Delete

@@ -36,4 +36,9 @@ module.exports = {
     baseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
     model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   },
+  auth: {
+    jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-me',
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  },
 };

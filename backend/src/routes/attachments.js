@@ -4,6 +4,7 @@ const storage = require('../storage');
 const ai = require('../ai');
 const { uuid, parseExtractedText } = require('../util');
 const { indexNode } = require('../services/indexer');
+const { requireCanvasOwner, requireCanvasRead } = require('../services/access');
 
 const router = express.Router();
 
@@ -12,6 +13,8 @@ router.get('/:id/file', async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM attachments WHERE id=$1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Attachment not found' });
+    const readErr = await requireCanvasRead(req.user, rows[0].canvas_id);
+    if (readErr) return res.status(readErr.status).json({ error: readErr.error });
     const { stream, contentType } = await storage.getStream(rows[0].storage_key);
     res.setHeader('Content-Type', contentType || rows[0].mime_type);
     res.setHeader(
@@ -34,6 +37,8 @@ router.post('/:id/extract', async (req, res, next) => {
     const { rows } = await pool.query('SELECT * FROM attachments WHERE id=$1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Attachment not found' });
     const att = rows[0];
+    const err = await requireCanvasOwner(req.user, att.canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
 
     await pool.query(`UPDATE attachments SET status='extracting' WHERE id=$1`, [att.id]);
     try {
@@ -63,6 +68,8 @@ router.post('/:id/apply', async (req, res, next) => {
     const { rows } = await pool.query('SELECT * FROM attachments WHERE id=$1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Attachment not found' });
     const att = rows[0];
+    const err = await requireCanvasOwner(req.user, att.canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
 
     const action = (req.body && req.body.action) || 'store';
     const text =
@@ -150,6 +157,8 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM attachments WHERE id=$1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Attachment not found' });
+    const err = await requireCanvasOwner(req.user, rows[0].canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
     await storage.remove(rows[0].storage_key);
     await pool.query('DELETE FROM attachments WHERE id=$1', [req.params.id]);
     await indexNode(rows[0].node_id);

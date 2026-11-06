@@ -1,3 +1,5 @@
+import { getToken } from './auth';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 async function request(path, options = {}) {
@@ -5,6 +7,8 @@ async function request(path, options = {}) {
   const headers = isForm
     ? { ...(options.headers || {}) }
     : { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
@@ -27,10 +31,20 @@ export const api = {
   getCanvas: (id) => request(`/canvases/${id}`),
   updateCanvas: (id, data) => request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCanvas: (id) => request(`/canvases/${id}`, { method: 'DELETE' }),
+  forkCanvas: (id) => request(`/canvases/${id}/fork`, { method: 'POST' }),
+
+  signup: (email, password, name) =>
+    request('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
+  login: (email, password) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  googleLogin: (idToken) =>
+    request('/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
+  me: () => request('/auth/me'),
 
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteNode: (id) => request(`/nodes/${id}`, { method: 'DELETE' }),
+  mergeNode: (id, mode) => request(`/nodes/${id}/merge-into-parent`, { method: 'POST', body: JSON.stringify({ mode }) }),
   getNode: (id) => request(`/nodes/${id}`),
   exportNode: (id) => request(`/nodes/${id}/export`, { method: 'POST' }),
 

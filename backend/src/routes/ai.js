@@ -6,6 +6,14 @@ const ai = require('../ai');
 const { parseTree } = require('../jsonParse');
 const storage = require('../storage');
 const es = require('../es');
+const { recomputeDepths, computePositions, relayoutCanvas } = require('../services/layout');
+const { requireCanvasOwner, nodeCanvasId } = require('../services/access');
+
+async function requireNodeOwner(req, nodeId) {
+  const canvasId = await nodeCanvasId(nodeId);
+  if (!canvasId) return { status: 404, error: 'Node not found' };
+  return requireCanvasOwner(req.user, canvasId);
+}
 
 const router = express.Router();
 
@@ -38,6 +46,8 @@ router.post('/ask', async (req, res, next) => {
     const { node_id, question, model, context: providedContext } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!question || !question.trim()) return res.status(400).json({ error: 'question is required' });
+    const accessErr = await requireNodeOwner(req, node_id);
+    if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
 
     // Prefer a client-supplied context (aggregated from node titles/descriptions);
     // otherwise fall back to the node + its ancestors.
@@ -78,6 +88,10 @@ router.post('/respond', async (req, res, next) => {
   try {
     const { prompt, context, model, canvas_id } = req.body || {};
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
+    if (canvas_id) {
+      const accessErr = await requireCanvasOwner(req.user, canvas_id);
+      if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
+    }
 
     const messages = [
       {
@@ -201,49 +215,14 @@ function flatten(root, list = [], parentRef = -1, depth = 0) {
   return list;
 }
 
-// Simple left-to-right layout for the flattened tree.
-function computePositions(flat) {
-  const children = new Map();
-  flat.forEach((n, i) => {
-    if (n.parentRef >= 0) {
-      if (!children.has(n.parentRef)) children.set(n.parentRef, []);
-      children.get(n.parentRef).push(i);
-    }
-  });
-  const V_GAP = 90;
-  const H_GAP = 260;
-  const subtreeHeight = (i) => {
-    const kids = children.get(i) || [];
-    if (kids.length === 0) return V_GAP;
-    return kids.reduce((s, k) => s + subtreeHeight(k), 0);
-  };
-  const pos = new Array(flat.length);
-  const place = (i, x, yTop) => {
-    const kids = children.get(i) || [];
-    const h = subtreeHeight(i);
-    pos[i] = { x, y: yTop + h / 2 };
-    let cy = yTop;
-    for (const k of kids) {
-      place(k, x + H_GAP, cy);
-      cy += subtreeHeight(k);
-    }
-  };
-  let rootY = 0;
-  flat.forEach((n, i) => {
-    if (n.parentRef < 0) {
-      place(i, 0, rootY);
-      rootY += subtreeHeight(i) + V_GAP;
-    }
-  });
-  return pos;
-}
-
 // POST /api/ai/build  { canvas_id, prompt, node_id? }
 router.post('/build', async (req, res, next) => {
   try {
     const { canvas_id, prompt, node_id, model } = req.body || {};
     if (!canvas_id) return res.status(400).json({ error: 'canvas_id is required' });
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
+    const accessErr = await requireCanvasOwner(req.user, canvas_id);
+    if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
 
     let attachParentId = null;
     let attachDepth = 0;
@@ -345,6 +324,8 @@ router.post('/apply', async (req, res, next) => {
     const { node_id, text, action, mode, author, model } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
+    const accessErr = await requireNodeOwner(req, node_id);
+    if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
 
     const node = await pool.query('SELECT * FROM nodes WHERE id=$1', [node_id]);
     if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
@@ -449,10 +430,11 @@ router.post('/apply', async (req, res, next) => {
 
       // 1) Create the new canvas and populate it with the generated map.
       const newCanvasId = uuid();
-      await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+      await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
         newCanvasId,
         canvasName,
         description,
+        req.user.sub,
       ]);
 
       const positions = computePositions(flat);
@@ -549,6 +531,11 @@ router.post('/import-text', async (req, res, next) => {
   try {
     const { text, canvas_name, node_id } = req.body || {};
     if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (node_id) {
+      const accessErr = await requireNodeOwner(req, node_id);
+      if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
+    }
 
     let canvasId;
     let attachParentId;
@@ -567,10 +554,11 @@ router.post('/import-text', async (req, res, next) => {
     } else {
       const name = (canvas_name || 'E-Paper Analysis').trim() || 'E-Paper Analysis';
       canvasId = uuid();
-      await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+      await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
         canvasId,
         name,
         '',
+        req.user.sub,
       ]);
       const rootId = uuid();
       // Keep the FULL text in the root node's notes so nothing is lost.
@@ -620,66 +608,14 @@ router.post('/import-text', async (req, res, next) => {
   }
 });
 
-// Recompute depth for every node of a canvas (recursive CTE from roots).
-async function recomputeDepths(canvasId) {
-  await pool.query(
-    `WITH RECURSIVE tree AS (
-       SELECT id, 0 AS d FROM nodes WHERE canvas_id = $1 AND parent_id IS NULL
-       UNION ALL
-       SELECT n.id, tree.d + 1 FROM nodes n JOIN tree ON n.parent_id = tree.id
-     )
-     UPDATE nodes SET depth = tree.d, updated_at = now()
-     FROM tree WHERE nodes.id = tree.id AND nodes.canvas_id = $1`,
-    [canvasId]
-  );
-}
-
-// Re-layout the whole canvas into a clean left-to-right tree.
-async function relayoutCanvas(canvasId) {
-  const { rows } = await pool.query(
-    `SELECT id, parent_id, x, y FROM nodes WHERE canvas_id = $1`,
-    [canvasId]
-  );
-  if (!rows.length) return;
-
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const children = new Map();
-  const roots = [];
-  for (const r of rows) {
-    if (r.parent_id && byId.has(r.parent_id)) {
-      if (!children.has(r.parent_id)) children.set(r.parent_id, []);
-      children.get(r.parent_id).push(r);
-    } else {
-      roots.push(r);
-    }
-  }
-  children.forEach((v) => v.sort((a, b) => a.y - b.y));
-  roots.sort((a, b) => a.y - b.y);
-
-  const flat = [];
-  const walk = (node, parentRef) => {
-    const idx = flat.length;
-    flat.push({ id: node.id, parentRef });
-    for (const k of children.get(node.id) || []) walk(k, idx);
-  };
-  for (const r of roots) walk(r, -1);
-
-  const positions = computePositions(flat);
-  for (let i = 0; i < flat.length; i++) {
-    await pool.query('UPDATE nodes SET x=$1, y=$2 WHERE id=$3', [
-      positions[i].x,
-      positions[i].y,
-      flat[i].id,
-    ]);
-  }
-}
-
 // POST /api/ai/rearrange  { node_id, prompt?, mode: 'keep' | 'modify', model? }
 // Rearranges a node's child subtree using AI, based on titles + descriptions.
 router.post('/rearrange', async (req, res, next) => {
   try {
     const { node_id, prompt, mode, model } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
+    const accessErr = await requireNodeOwner(req, node_id);
+    if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
     const keep = mode !== 'modify';
 
     const anchor = await pool.query('SELECT * FROM nodes WHERE id=$1', [node_id]);
