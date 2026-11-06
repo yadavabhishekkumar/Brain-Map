@@ -256,4 +256,18 @@ router.post('/:id/link', async (req, res, next) => {
   }
 });
 
+// List chat history for a canvas (the top-level "Ask AI" panel).
+router.get('/:id/chats', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, canvas_id, question, answer, author, created_at
+       FROM canvas_chats WHERE canvas_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;

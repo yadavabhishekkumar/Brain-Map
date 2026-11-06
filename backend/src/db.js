@@ -59,9 +59,19 @@ CREATE TABLE IF NOT EXISTS node_chats (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS canvas_chats (
+  id UUID PRIMARY KEY,
+  canvas_id UUID NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  author TEXT NOT NULL DEFAULT 'You',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_nodes_canvas ON nodes(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
 CREATE INDEX IF NOT EXISTS idx_node_chats_node ON node_chats(node_id);
+CREATE INDEX IF NOT EXISTS idx_canvas_chats_canvas ON canvas_chats(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_edges_canvas ON edges(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_node ON attachments(node_id);
 `;

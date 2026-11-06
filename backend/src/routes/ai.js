@@ -35,11 +35,15 @@ async function buildAncestorContext(nodeId) {
 // POST /api/ai/ask  { node_id, question }
 router.post('/ask', async (req, res, next) => {
   try {
-    const { node_id, question, model } = req.body || {};
+    const { node_id, question, model, context: providedContext } = req.body || {};
     if (!node_id) return res.status(400).json({ error: 'node_id is required' });
     if (!question || !question.trim()) return res.status(400).json({ error: 'question is required' });
 
-    const context = await buildAncestorContext(node_id);
+    // Prefer a client-supplied context (aggregated from node titles/descriptions);
+    // otherwise fall back to the node + its ancestors.
+    const context = providedContext && providedContext.trim()
+      ? providedContext.trim()
+      : await buildAncestorContext(node_id);
     if (!context) return res.status(404).json({ error: 'Node not found' });
 
     const messages = [
@@ -48,7 +52,7 @@ router.post('/ask', async (req, res, next) => {
         content:
           'You are a knowledgeable UPSC (Union Public Service Commission) exam preparation assistant. ' +
           'Answer the student\'s question accurately and concisely, grounded in the provided study ' +
-          'context (the selected topic and its parent topics). If the context does not contain the ' +
+          'context. If the context does not contain the ' +
           'answer, say so briefly and then answer from general knowledge.',
       },
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
@@ -62,6 +66,42 @@ router.post('/ask', async (req, res, next) => {
       [chatId, node_id, question.trim(), content]
     );
 
+    res.json({ answer: content, chat_id: chatId });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/ai/respond  { prompt, context, model }
+// General-purpose response generation using a caller-supplied context.
+router.post('/respond', async (req, res, next) => {
+  try {
+    const { prompt, context, model, canvas_id } = req.body || {};
+    if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          'You are a knowledgeable UPSC (Union Public Service Commission) exam preparation assistant. ' +
+          'Answer the request thoroughly and clearly, grounded in the provided study context where relevant.',
+      },
+      {
+        role: 'user',
+        content: `Study context:\n\n${(context || '').trim() || '(none provided)'}\n\nRequest: ${prompt.trim()}`,
+      },
+    ];
+
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2 });
+
+    let chatId = null;
+    if (canvas_id) {
+      chatId = uuid();
+      await pool.query(
+        `INSERT INTO canvas_chats (id, canvas_id, question, answer, author) VALUES ($1,$2,$3,$4,'You')`,
+        [chatId, canvas_id, prompt.trim(), content]
+      );
+    }
     res.json({ answer: content, chat_id: chatId });
   } catch (e) {
     next(e);

@@ -54,8 +54,11 @@ export const api = {
 
   linkCanvas: (canvasId, data) => request(`/canvases/${canvasId}/link`, { method: 'POST', body: JSON.stringify(data) }),
 
-  askAI: (nodeId, question, model) =>
-    request('/ai/ask', { method: 'POST', body: JSON.stringify({ node_id: nodeId, question, model }) }),
+  askAI: (nodeId, question, model, context) =>
+    request('/ai/ask', { method: 'POST', body: JSON.stringify({ node_id: nodeId, question, model, context: context || '' }) }),
+
+  respond: (prompt, context, model, canvasId) =>
+    request('/ai/respond', { method: 'POST', body: JSON.stringify({ prompt, context: context || '', model, canvas_id: canvasId || null }) }),
 
   aiBuild: (canvasId, prompt, nodeId, model) =>
     request('/ai/build', {
@@ -76,6 +79,8 @@ export const api = {
     }),
 
   listChats: (nodeId) => request(`/nodes/${nodeId}/chats`),
+
+  listCanvasChats: (canvasId) => request(`/canvases/${canvasId}/chats`),
 
   downloadEpaper: (payload) => request('/epaper/download', { method: 'POST', body: JSON.stringify(payload) }),
 

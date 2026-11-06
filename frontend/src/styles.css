@@ -1030,6 +1030,45 @@ mark {
   border-color: var(--primary);
 }
 
+.ai-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-context-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ai-context textarea {
+  font-size: 12px;
+  line-height: 1.5;
+  background: #f8fafc;
+}
+
+.ai-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-node-select {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+}
+
 .ai-answer {
   white-space: pre-wrap;
   font-size: 13px;
