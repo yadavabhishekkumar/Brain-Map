@@ -23,13 +23,18 @@ export default function AIBuildPanel({ canvasId, selectedNode, nodes, onBuilt, o
     const list = (nodes || [])
       .slice()
       .sort((a, b) => (((a.data && a.data.depth) || 0) - ((b.data && b.data.depth) || 0)));
-    return list
+    const body = list
       .map((n) => {
         const label = (n.data && n.data.label) || n.label || '';
         const content = (n.data && n.data.content) || n.content || '';
         return `Title: ${label}\nDescription: ${content || '(no description)'}`;
       })
       .join('\n\n');
+    const intro =
+      'The study context below is derived from a mind-map knowledge graph. ' +
+      'Topics are listed in tree order — starting with the root topic, then its child topics, then their children, and so on. ' +
+      'Each topic has a Title followed by its Description.';
+    return `${intro}\n\n${body}`;
   };
 
   const loadChats = async () => {

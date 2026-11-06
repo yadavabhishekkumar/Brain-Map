@@ -2114,7 +2114,8 @@ mark {
     order: 2;
     flex-wrap: wrap;
     gap: 8px;
-    padding: 8px 10px;
+    padding: 12px 18px 14px 12px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     border-bottom: none;
     border-top: 1px solid var(--border);
   }
@@ -2220,10 +2221,10 @@ mark {
     order: 10;
   }
 
-  /* Zoom control sits above the bottom toolbar */
+  /* Zoom control sits above the expanded tools menu (clears the ~114px upward menu) */
   .zoom-control {
     left: 10px;
-    bottom: 76px;
+    bottom: 130px;
   }
 
   /* E-paper page */
