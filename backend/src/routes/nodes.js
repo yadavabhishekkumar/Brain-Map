@@ -5,26 +5,14 @@ const { uuid } = require('../util');
 const { indexNode } = require('../services/indexer');
 const es = require('../es');
 const storage = require('../storage');
+const { recomputeDepths, relayoutCanvas } = require('../services/layout');
+const { requireCanvasOwner, requireCanvasRead, nodeCanvasId } = require('../services/access');
 
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
 });
-
-// Recompute depth for every node of a canvas (recursive CTE from roots)
-async function recomputeDepths(canvasId) {
-  await pool.query(
-    `WITH RECURSIVE tree AS (
-       SELECT id, 0 AS d FROM nodes WHERE canvas_id = $1 AND parent_id IS NULL
-       UNION ALL
-       SELECT n.id, tree.d + 1 FROM nodes n JOIN tree ON n.parent_id = tree.id
-     )
-     UPDATE nodes SET depth = tree.d, updated_at = now()
-     FROM tree WHERE nodes.id = tree.id AND nodes.canvas_id = $1`,
-    [canvasId]
-  );
-}
 
 // Get a single node with its attachments
 router.get('/:id', async (req, res, next) => {
@@ -39,6 +27,8 @@ router.get('/:id', async (req, res, next) => {
       [id]
     );
     if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
+    const readErr = await requireCanvasRead(req.user, node.rows[0].canvas_id);
+    if (readErr) return res.status(readErr.status).json({ error: readErr.error });
 
     const att = await pool.query(
       `SELECT id, node_id, original_filename, mime_type, size_bytes, extracted_text, status, applied_action, created_at
@@ -58,6 +48,8 @@ router.put('/:id', async (req, res, next) => {
     const node = await pool.query('SELECT * FROM nodes WHERE id=$1', [id]);
     if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
     const canvasId = node.rows[0].canvas_id;
+    const err = await requireCanvasOwner(req.user, canvasId);
+    if (err) return res.status(err.status).json({ error: err.error });
 
     const fields = [];
     const values = [];
@@ -90,6 +82,8 @@ router.delete('/:id', async (req, res, next) => {
     const { id } = req.params;
     const node = await pool.query('SELECT canvas_id FROM nodes WHERE id=$1', [id]);
     if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
+    const err = await requireCanvasOwner(req.user, node.rows[0].canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
 
     // Collect attachment storage keys for the whole subtree before cascade delete
     const att = await pool.query(
@@ -133,9 +127,64 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// Merge a node into its parent: optionally append the node's title/description
+// to the parent, then reparent the node's children and delete it.
+router.post('/:id/merge-into-parent', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { mode } = req.body || {}; // 'drop' | 'append'
+    const node = await pool.query('SELECT id, canvas_id, parent_id, label, content FROM nodes WHERE id=$1', [id]);
+    if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
+    const { canvas_id, parent_id, label, content } = node.rows[0];
+    if (!parent_id) return res.status(400).json({ error: 'Cannot merge a root node' });
+    const err = await requireCanvasOwner(req.user, canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
+
+    if (mode === 'append') {
+      const parent = await pool.query('SELECT label, content FROM nodes WHERE id=$1', [parent_id]);
+      if (parent.rows[0]) {
+        const p = parent.rows[0];
+        const pTitle = (p.label || '').trim();
+        const cTitle = (label || '').trim();
+        const newTitle = pTitle && cTitle ? `${pTitle} & ${cTitle}` : pTitle || cTitle;
+        const newContent = [p.content, content].filter((s) => s && String(s).trim()).join('\n\n');
+        await pool.query('UPDATE nodes SET label=$1, content=$2, updated_at=now() WHERE id=$3', [newTitle, newContent, parent_id]);
+        await indexNode(parent_id);
+      }
+    }
+
+    // Reparent this node's children to its parent.
+    await pool.query('UPDATE nodes SET parent_id=$1, updated_at=now() WHERE parent_id=$2', [parent_id, id]);
+
+    // Remove this node's own attachment files (rows are removed by cascade).
+    const att = await pool.query('SELECT storage_key FROM attachments WHERE node_id=$1', [id]);
+    await pool.query('DELETE FROM nodes WHERE id=$1', [id]);
+    await es.removeNode(id);
+    for (const a of att.rows) {
+      try {
+        await storage.remove(a.storage_key);
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    }
+
+    await recomputeDepths(canvas_id);
+    await relayoutCanvas(canvas_id);
+    await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [canvas_id]);
+
+    res.json({ merged: true, mode: mode || 'drop' });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // List attachments for a node
 router.get('/:id/attachments', async (req, res, next) => {
   try {
+    const canvasId = await nodeCanvasId(req.params.id);
+    if (!canvasId) return res.status(404).json({ error: 'Node not found' });
+    const readErr = await requireCanvasRead(req.user, canvasId);
+    if (readErr) return res.status(readErr.status).json({ error: readErr.error });
     const { rows } = await pool.query(
       `SELECT id, node_id, original_filename, mime_type, size_bytes, extracted_text, status, applied_action, created_at
        FROM attachments WHERE node_id = $1 ORDER BY created_at ASC`,
@@ -156,6 +205,8 @@ router.post('/:id/attachments', upload.single('file'), async (req, res, next) =>
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const canvasId = node.rows[0].canvas_id;
+    const err = await requireCanvasOwner(req.user, canvasId);
+    if (err) return res.status(err.status).json({ error: err.error });
     const aid = uuid();
     const ext = (req.file.originalname.split('.').pop() || 'png').toLowerCase().slice(0, 8);
     const key = `${canvasId}/${id}/${aid}.${ext}`;
@@ -182,6 +233,10 @@ router.post('/:id/attachments', upload.single('file'), async (req, res, next) =>
 // List AI chat history for a node
 router.get('/:id/chats', async (req, res, next) => {
   try {
+    const canvasId = await nodeCanvasId(req.params.id);
+    if (!canvasId) return res.status(404).json({ error: 'Node not found' });
+    const err = await requireCanvasOwner(req.user, canvasId);
+    if (err) return res.status(err.status).json({ error: err.error });
     const { rows } = await pool.query(
       `SELECT id, node_id, question, answer, author, created_at
        FROM node_chats WHERE node_id = $1 ORDER BY created_at DESC`,
@@ -200,6 +255,8 @@ router.post('/:id/export', async (req, res, next) => {
     const node = await pool.query('SELECT * FROM nodes WHERE id=$1', [id]);
     if (!node.rows[0]) return res.status(404).json({ error: 'Node not found' });
     const self = node.rows[0];
+    const err = await requireCanvasOwner(req.user, self.canvas_id);
+    if (err) return res.status(err.status).json({ error: err.error });
 
     // 1) Collect the subtree (self + descendants) ordered by depth.
     const subtree = await pool.query(
@@ -221,10 +278,11 @@ router.post('/:id/export', async (req, res, next) => {
 
     // 2) Create the new canvas.
     const newCanvasId = uuid();
-    await pool.query('INSERT INTO canvases (id, name, description) VALUES ($1,$2,$3)', [
+    await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
       newCanvasId,
       canvasName,
       description,
+      req.user.sub,
     ]);
 
     // 3) Copy the subtree into the new canvas (self becomes the root).

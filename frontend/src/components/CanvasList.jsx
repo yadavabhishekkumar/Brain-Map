@@ -3,7 +3,7 @@ import { api } from '../api';
 import MicButton from './MicButton';
 import { AI_MODELS, getAiModel, setAiModel } from '../aiModel';
 
-export default function CanvasList({ onOpen, onOpenEpaper }) {
+export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut }) {
   const [canvases, setCanvases] = useState([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -25,6 +25,7 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
   }, []);
 
   const create = async () => {
+    if (!user) { onSignIn(); return; }
     if (!name.trim() || creating) return;
     setCreating(true);
     try {
@@ -43,6 +44,16 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
     if (!window.confirm('Delete this canvas and all its content?')) return;
     try {
       await api.deleteCanvas(id);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const fork = async (id) => {
+    if (!window.confirm('Fork this public canvas into your account?')) return;
+    try {
+      await api.forkCanvas(id);
       await load();
     } catch (e) {
       alert(e.message);
@@ -93,6 +104,9 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
                   🔗 linked
                 </span>
               )}
+              <span className={`canvas-visibility-badge${canvas.is_public ? '' : ' canvas-visibility-private'}`}>
+                {canvas.is_public ? '🌍 Public' : '🔒 Private'}
+              </span>
             </div>
             <div className="canvas-row-desc">{canvas.description ? canvas.description : 'No description'}</div>
           </div>
@@ -102,9 +116,16 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
             <button className="btn btn-sm" onClick={() => onOpen(canvas.id, canvas.name)}>
               Open
             </button>
-            <button className="btn btn-sm btn-danger" onClick={() => remove(canvas.id)}>
-              Delete
-            </button>
+            {canvas.is_public && user && (
+              <button className="btn btn-sm" onClick={() => fork(canvas.id)}>
+                🍴 Fork
+              </button>
+            )}
+            {!canvas.is_public && user && canvas.owner_id === user.id && (
+              <button className="btn btn-sm btn-danger" onClick={() => remove(canvas.id)}>
+                Delete
+              </button>
+            )}
           </div>
         </div>
         {kids.map((k) => renderRow(k, depth + 1))}
@@ -114,6 +135,17 @@ export default function CanvasList({ onOpen, onOpenEpaper }) {
 
   return (
     <div className="canvas-list-page">
+      <div className="account-bar">
+        {user ? (
+          <>
+            <span className="account-name">👤 {user.name || user.email}</span>
+            <button className="btn btn-sm" onClick={onSignOut}>Sign out</button>
+          </>
+        ) : (
+          <button className="btn btn-sm btn-primary" onClick={onSignIn}>Sign in / Sign up</button>
+        )}
+      </div>
+
       <div className="hero">
         <h1>🧠 UPSC Brain Map</h1>
         <p className="hero-sub">

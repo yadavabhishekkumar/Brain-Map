@@ -4,6 +4,7 @@ const config = require('./config');
 const { initSchema } = require('./db');
 const es = require('./es');
 const storage = require('./storage');
+const { authOptional } = require('./services/auth');
 const path = require('path');
 const fs = require('fs');
 
@@ -21,10 +22,14 @@ async function main() {
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: '10mb' }));
 
+  // Attach req.user when a valid Bearer token is present (all routes can read it).
+  app.use(authOptional);
+
   app.get('/api/health', (req, res) =>
     res.json({ ok: true, service: 'upsc-brainmap', time: new Date().toISOString() })
   );
 
+  app.use('/api/auth', require('./routes/auth'));
   app.use('/api/canvases', require('./routes/canvases'));
   app.use('/api/nodes', require('./routes/nodes'));
   app.use('/api/edges', require('./routes/edges'));

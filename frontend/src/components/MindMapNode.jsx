@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 function MindMapNode({ data, selected, id }) {
-  const { label, depth, isRoot, attachmentCount, linked_canvas_id, highlighted, parentHighlighted, editMode, connectMode, onAction, hasHiddenChildren, hasVisibleChildren, onExpand, onCollapse } = data;
+  const { label, depth, isRoot, attachmentCount, linked_canvas_id, linked_canvas_name, onOpenLinked, highlighted, parentHighlighted, editMode, connectMode, onAction, hasHiddenChildren, hasVisibleChildren, onExpand, onCollapse } = data;
   const scale = data.scale || 1;
   const labelFont = (isRoot ? 16 : 14) * scale;
   const paddingY = (isRoot ? 14 : 10) * scale;
@@ -31,12 +31,22 @@ function MindMapNode({ data, selected, id }) {
             📎{attachmentCount}
           </span>
         )}
-        {linked_canvas_id && (
-          <span className="mind-node-open" style={{ fontSize: `${iconFont}px` }} title="Linked canvas — open from the side panel">
-            ↗
-          </span>
-        )}
       </div>
+      {!editMode && linked_canvas_id && onOpenLinked && (
+        <button
+          className="mind-node-open-btn"
+          style={{ width: `${20 * scale}px`, height: `${20 * scale}px`, fontSize: `${12 * scale}px` }}
+          title={`Open linked canvas: ${linked_canvas_name || label}`}
+          aria-label="Open linked canvas"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenLinked(linked_canvas_id, linked_canvas_name || label);
+          }}
+        >
+          ↗
+        </button>
+      )}
       {!connectMode && <Handle type="source" position={Position.Right} className="mind-handle" />}
 
       {connectMode && (

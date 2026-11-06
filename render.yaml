@@ -48,6 +48,21 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # Auth (NEW — required for accounts/sign-in):
+      # - JWT_SECRET: a long random string that signs login tokens. REQUIRED
+      #   for the accounts feature; without it a public default is used.
+      # - GOOGLE_CLIENT_ID: your Google OAuth "Web application" Client ID
+      #   (for "Sign in with Google"). Optional — email/password still works
+      #   without it.
+      # - VITE_GOOGLE_CLIENT_ID: the SAME Google Client ID, embedded into the
+      #   frontend at build time for the Google button. Set it here (Render
+      #   exposes env vars during the build step too).
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
       # Optional: hosted Elasticsearch for full-text search.
       # - key: ES_URL
       #   value: https://your-es-cluster:9200

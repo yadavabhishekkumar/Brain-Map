@@ -393,6 +393,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const clickTimer = useRef(null);
   const baselineRef = useRef(null);
   const tempIdRef = useRef(0);
+  const mergeRef = useRef([]);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [focusMode, setFocusMode] = useState(false);
   const [focusedNodeIds, setFocusedNodeIds] = useState([]);
@@ -647,6 +648,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setVertical(false);
     setCompress(1);
     setDrawMode(false);
+    mergeRef.current = [];
     setEditMode(true);
   }, [makeSnapshot]);
 
@@ -657,7 +659,61 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setUndoStack([]);
     setRedoStack([]);
     baselineRef.current = null;
+    mergeRef.current = [];
   }, []);
+
+  // Merge a node into its parent (undoable, staged): optionally append its
+  // title/description to the parent, then move its children up and remove it.
+  const stageMerge = useCallback(
+    (nodeId, mode) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const parentId = (node.data && node.data.parent_id) || null;
+      if (!parentId) return;
+
+      pushUndo();
+      mergeRef.current.push({ nodeId, mode });
+
+      // Collect the node's subtree (children + descendants) to shift depths.
+      const subtree = new Set([nodeId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const n of nodes) {
+          if (n.data && n.data.parent_id && subtree.has(n.data.parent_id) && !subtree.has(n.id)) {
+            subtree.add(n.id);
+            changed = true;
+          }
+        }
+      }
+
+      setNodes((nds) =>
+        nds
+          .filter((n) => n.id !== nodeId)
+          .map((n) => {
+            if (n.id === parentId && mode === 'append') {
+              const pLabel = (n.data && n.data.label) || '';
+              const cLabel = (node.data && node.data.label) || '';
+              const pContent = (n.data && n.data.content) || '';
+              const cContent = (node.data && node.data.content) || '';
+              const newLabel = pLabel && cLabel ? `${pLabel} & ${cLabel}` : pLabel || cLabel;
+              const newContent = [pContent, cContent].filter((s) => s && String(s).trim()).join('\n\n');
+              return { ...n, data: { ...n.data, label: newLabel, content: newContent } };
+            }
+            if (n.data && n.data.parent_id === nodeId) {
+              return { ...n, data: { ...n.data, parent_id: parentId, depth: Math.max(0, (n.data.depth || 0) - 1) } };
+            }
+            if (subtree.has(n.id)) {
+              return { ...n, data: { ...n.data, depth: Math.max(0, (n.data.depth || 0) - 1) } };
+            }
+            return n;
+          })
+      );
+
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    },
+    [nodes, pushUndo, setNodes, setEdges]
+  );
 
   // Convert drawn shapes into staged (undoable) brain-map nodes at their drawn positions.
   const generateFromShapes = useCallback(
@@ -696,8 +752,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     const baseIds = new Set(baseline.nodes.map((n) => n.id));
     const currIds = new Set(nodes.map((n) => n.id));
 
+    // 0. Merges first (reparent children + delete node atomically) so the
+    // children aren't cascade-deleted along with the merged node.
+    for (const m of mergeRef.current) {
+      await api.mergeNode(m.nodeId, m.mode);
+    }
+    const mergedIds = new Set(mergeRef.current.map((m) => m.nodeId));
+    mergeRef.current = [];
+
     // 1. Deleted nodes (topmost only; cascade handles descendants)
-    const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id));
+    const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id) && !mergedIds.has(n.id));
     const deletedIds = new Set(deletedNodes.map((n) => n.id));
     const topmost = deletedNodes.filter(
       (n) => !(n.data && n.data.parent_id) || !deletedIds.has(n.data.parent_id)
@@ -899,6 +963,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           editMode,
           connectMode,
           onAction: onNodeAction,
+          onOpenLinked: onOpenCanvas,
           hasHiddenChildren,
           hasVisibleChildren,
           onExpand: expandChildren,
@@ -908,7 +973,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, collapsedParentIds, expandChildren, collapseChildren, vertical, verticalPositions, compress, nodesLocked]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, collapsedParentIds, expandChildren, collapseChildren, vertical, verticalPositions, compress, nodesLocked, onOpenCanvas]);
 
   // Fit the whole tree to the screen: shrink node content AND spacing so the
   // tree fits at a readable zoom, without changing its orientation.
@@ -1373,7 +1438,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, [closePanels]);
 
   // Single click -> read-only preview (after a short delay so a double-click wins).
+  // Linked-canvas nodes are skipped: only double-click navigates into them.
   const handleNodeClick = useCallback((e, node) => {
+    const d = node.data || {};
+    if (d.linked_canvas_id) return;
     clearTimeout(clickTimer.current);
     clickTimer.current = setTimeout(() => {
       setPreviewNodeId(node.id);
@@ -1534,6 +1602,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             minZoom={0.2}
             maxZoom={2.5}
             zoomOnScroll={!zoomLock}
+            zoomOnDoubleClick={false}
             zoomOnPinch={!zoomLock}
             panOnScroll={zoomLock}
             defaultEdgeOptions={{ type: 'smoothstep' }}
@@ -1653,6 +1722,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onOpenCanvas={onOpenCanvas}
             editMode={editMode}
             onDeleteNode={onDeleteNode}
+            onMergeNode={stageMerge}
             width={panelWidth}
             onResize={setPanelWidth}
             tempNode={
