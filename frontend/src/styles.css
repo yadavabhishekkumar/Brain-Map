@@ -1276,6 +1276,15 @@ mark {
   z-index: 100;
   background: rgba(255, 255, 255, 0.95);
   box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
 }
 
 /* ---------- Focus Mode bar ---------- */
@@ -2095,11 +2104,19 @@ mark {
     grid-template-columns: 1fr;
   }
 
-  /* Canvas topbar: title and action buttons wrap onto their own rows */
+  /* Canvas topbar: move to the bottom as a compact bar on mobile */
+  .canvas-body {
+    order: 1;
+  }
+
   .canvas-topbar {
+    position: relative;
+    order: 2;
     flex-wrap: wrap;
     gap: 8px;
     padding: 8px 10px;
+    border-bottom: none;
+    border-top: 1px solid var(--border);
   }
 
   .canvas-title {
@@ -2113,7 +2130,17 @@ mark {
   }
 
   .tools-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 8px;
+    right: 8px;
+    margin-bottom: 8px;
     gap: 6px;
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
   }
 
   .tool-icon {
