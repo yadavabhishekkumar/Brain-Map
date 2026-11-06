@@ -340,6 +340,7 @@ select:focus {
 
 .canvas-topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
@@ -355,9 +356,84 @@ select:focus {
   text-align: center;
 }
 
-.topbar-actions {
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.tools-toggle-open,
+.icon-btn-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.tools-menu {
+  flex: 1 1 100%;
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tool-icon:hover {
+  background: #f1f5f9;
+}
+
+.tool-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tool-icon-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.tool-icon-glyph {
+  line-height: 1;
+}
+
+.tool-icon-label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 40;
 }
 
 .canvas-parents {
@@ -1804,16 +1880,14 @@ mark {
     white-space: nowrap;
   }
 
-  .topbar-actions {
-    flex: 1 1 100%;
-    flex-wrap: wrap;
+  .tools-menu {
     gap: 6px;
   }
 
-  .topbar-actions .btn {
-    flex: 1 1 auto;
-    padding: 8px 10px;
-    font-size: 13px;
+  .tool-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
   }
 
   /* Node editor becomes a full-screen sheet */

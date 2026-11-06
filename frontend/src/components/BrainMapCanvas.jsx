@@ -265,6 +265,102 @@ function TabularView({ nodes, onOpenCanvas }) {
   );
 }
 
+// Icon-only action button. A single click reveals its two-word label; a
+// double click (two clicks within a short window) runs the action.
+function ToolIcon({ glyph, label, title, active, disabled, onActivate }) {
+  const clickTimer = useRef(null);
+  const labelTimer = useRef(null);
+  const [showLabel, setShowLabel] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(clickTimer.current);
+      clearTimeout(labelTimer.current);
+    };
+  }, []);
+
+  const handleClick = () => {
+    if (disabled) return;
+    if (clickTimer.current) {
+      // Second click inside the window => double-click => perform the action.
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+      clearTimeout(labelTimer.current);
+      setShowLabel(false);
+      onActivate();
+    } else {
+      // First click => reveal the label briefly.
+      setShowLabel(true);
+      clickTimer.current = setTimeout(() => {
+        clickTimer.current = null;
+      }, 350);
+      clearTimeout(labelTimer.current);
+      labelTimer.current = setTimeout(() => setShowLabel(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`tool-icon${active ? ' tool-icon-active' : ''}`}
+      onClick={handleClick}
+      title={title}
+      aria-label={label}
+      disabled={disabled}
+    >
+      <span className="tool-icon-glyph" aria-hidden="true">{glyph}</span>
+      {showLabel && <span className="tool-icon-label">{label}</span>}
+    </button>
+  );
+}
+
+// Compute a top-down (vertical) layout: depth flows down the y-axis and
+// siblings spread along the x-axis, centered under their parent.
+function layoutVertical(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const children = new Map();
+  const roots = [];
+  for (const n of nodes) {
+    const pid = n.data && n.data.parent_id;
+    if (!pid || !byId.has(pid)) roots.push(n);
+    else {
+      if (!children.has(pid)) children.set(pid, []);
+      children.get(pid).push(n);
+    }
+  }
+  for (const [pid, list] of children) {
+    list.sort((a, b) => (a.position.y - b.position.y) || (((a.data && a.data.depth) || 0) - ((b.data && b.data.depth) || 0)));
+  }
+
+  const depthSpacing = 120;
+  const leafSpacing = 280;
+  const positions = new Map();
+  let leafIndex = 0;
+
+  const assignX = (n) => {
+    const kids = children.get(n.id) || [];
+    if (kids.length === 0) {
+      const x = leafIndex * leafSpacing;
+      leafIndex += 1;
+      positions.set(n.id, x);
+      return x;
+    }
+    const xs = kids.map(assignX);
+    const x = (xs[0] + xs[xs.length - 1]) / 2;
+    positions.set(n.id, x);
+    return x;
+  };
+
+  roots.forEach(assignX);
+
+  const out = new Map();
+  for (const n of nodes) {
+    const d = (n.data && n.data.depth) || 0;
+    out.set(n.id, { x: positions.get(n.id) ?? 0, y: d * depthSpacing });
+  }
+  return out;
+}
+
 export default function BrainMapCanvas(props) {
   return (
     <ReactFlowProvider>
@@ -303,6 +399,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [alignMode, setAlignMode] = useState(false);
   const [alignLines, setAlignLines] = useState([]);
   const [connectMode, setConnectMode] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [vertical, setVertical] = useState(false);
+  const [compress, setCompress] = useState(1);
+  const [nodesLocked, setNodesLocked] = useState(true);
+  const verticalPositions = useMemo(() => (vertical ? layoutVertical(nodes) : null), [vertical, nodes]);
   const alignBaselineRef = useRef(null);
   const [revealedParentIds, setRevealedParentIds] = useState(() => new Set());
   const [collapsedParentIds, setCollapsedParentIds] = useState(() => new Set());
@@ -538,6 +639,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setRedoStack([]);
     setPreviewNodeId(null);
     setSelectedNodeId(null);
+    setVertical(false);
+    setCompress(1);
     setEditMode(true);
   }, [makeSnapshot]);
 
@@ -704,7 +807,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   // progressive disclosure + focus mode filtering + hover highlight + reveal
   const visible = useMemo(() => {
     const threshold = depthThreshold(zoom);
-    const scale = nodeScale(zoom);
+    const scale = (nodesLocked ? 1 : nodeScale(zoom)) * compress;
     const hidden = new Set();
 
     // Pass 1: decide hidden nodes (zoom threshold + focus + manual collapse/reveal).
@@ -718,7 +821,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       } else if (parentId && revealedParentIds.has(parentId)) {
         op = 1; // manually revealed
       } else {
-        op = nodeOpacity(d, threshold);
+        op = nodesLocked ? 1 : nodeOpacity(d, threshold);
       }
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       if (op <= 0.03 || focusHidden) hidden.add(n.id);
@@ -735,7 +838,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       } else if (parentId && revealedParentIds.has(parentId)) {
         op = 1;
       } else {
-        op = nodeOpacity(d, threshold);
+        op = nodesLocked ? 1 : nodeOpacity(d, threshold);
       }
       const focusHidden = focusedSubtreeIds && !focusedSubtreeIds.has(n.id);
       const hasHiddenChildren = nodes.some(
@@ -744,9 +847,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       const hasVisibleChildren = nodes.some(
         (c) => c.data && c.data.parent_id === n.id && !hidden.has(c.id)
       );
+      const basePos = vertical ? (verticalPositions.get(n.id) || n.position) : n.position;
       return {
         ...n,
         hidden: op <= 0.03 || focusHidden,
+        position: { x: basePos.x * compress, y: basePos.y * compress },
         style: { ...n.style, opacity: Math.max(op, 0), transition: 'opacity 200ms ease' },
         data: {
           ...n.data,
@@ -765,7 +870,43 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     });
     const vedges = derivedEdges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target));
     return { nodes: vnodes, edges: vedges };
-  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, collapsedParentIds, expandChildren, collapseChildren]);
+  }, [nodes, derivedEdges, zoom, focusedSubtreeIds, focusBaseDepth, hoveredChildIds, hoveredParentIds, editMode, connectMode, onNodeAction, revealedParentIds, collapsedParentIds, expandChildren, collapseChildren, vertical, verticalPositions, compress, nodesLocked]);
+
+  // Fit the whole tree to the screen: shrink node content AND spacing so the
+  // tree fits at a readable zoom, without changing its orientation.
+  const fitToScreen = useCallback(() => {
+    if (!nodes.length) return;
+    const nodeW = 260;
+    const nodeH = 64;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const n of nodes) {
+      const base = vertical ? (verticalPositions.get(n.id) || n.position) : n.position;
+      minX = Math.min(minX, base.x);
+      minY = Math.min(minY, base.y);
+      maxX = Math.max(maxX, base.x + nodeW);
+      maxY = Math.max(maxY, base.y + nodeH);
+    }
+    const W = Math.max(1, maxX - minX);
+    const H = Math.max(1, maxY - minY);
+    const margin = 24;
+    const vw = Math.max(160, window.innerWidth - margin * 2);
+    const vh = Math.max(160, window.innerHeight - margin * 2 - 60);
+    const fit = Math.min(vw / W, vh / H);
+    setCompress(Math.max(0.05, Math.min(1, fit)));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitView({ padding: 0.08, duration: 400, maxZoom: 1.5 }));
+    });
+  }, [nodes, vertical, verticalPositions, setCompress, fitView]);
+
+  // Re-centre when the orientation is toggled.
+  useEffect(() => {
+    if (vertical) {
+      requestAnimationFrame(() => fitView({ padding: 0.15, duration: 300 }));
+    }
+  }, [vertical, fitView]);
 
   useEffect(() => {
     if (!loading && !didFit.current && nodes.length > 0) {
@@ -773,52 +914,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 400 }));
     }
   }, [loading, nodes.length, fitView]);
-
-  const addChild = useCallback(async () => {
-    if (!selectedNodeId) {
-      alert('Select a node first');
-      return;
-    }
-    const parent = nodes.find((n) => n.id === selectedNodeId);
-    if (!parent) return;
-    const childCount = nodes.filter((n) => n.data && n.data.parent_id === parent.id).length;
-    const node = await api.createNode(canvasId, {
-      label: 'New topic',
-      content: '',
-      parent_id: parent.id,
-      x: parent.position.x + 260,
-      y: parent.position.y + childCount * 90,
-    });
-    setNodes((nds) => [...nds, toNode(node)]);
-  }, [selectedNodeId, nodes, canvasId, setNodes]);
-
-  const addSibling = useCallback(async () => {
-    if (!selectedNodeId) {
-      alert('Select a node first');
-      return;
-    }
-    const sel = nodes.find((n) => n.id === selectedNodeId);
-    if (!sel) return;
-    const node = await api.createNode(canvasId, {
-      label: 'New topic',
-      content: '',
-      parent_id: sel.data.parent_id || null,
-      x: sel.position.x,
-      y: sel.position.y + 90,
-    });
-    setNodes((nds) => [...nds, toNode(node)]);
-  }, [selectedNodeId, nodes, canvasId, setNodes]);
-
-  const addRoot = useCallback(async () => {
-    const node = await api.createNode(canvasId, {
-      label: 'New central topic',
-      content: '',
-      parent_id: null,
-      x: 0,
-      y: nodes.length * 90,
-    });
-    setNodes((nds) => [...nds, toNode(node)]);
-  }, [canvasId, nodes.length, setNodes]);
 
   const exportExcel = useCallback(async () => {
     // Load SheetJS on demand so the export library isn't in the initial bundle.
@@ -1193,13 +1288,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       setPreviewNodeId(null);
       const n = nodes.find((x) => x.id === id);
       if (n) {
-        const sx = n.position.x * zoom + viewport.x;
+        const base = vertical ? (verticalPositions.get(n.id) || n.position) : n.position;
+        const sx = base.x * compress * zoom + viewport.x;
         const available = window.innerWidth - sx - 60;
         setPanelWidth(Math.max(280, Math.min(520, available)));
-        setCenter(n.position.x, n.position.y, { zoom: 1.6, duration: 800 });
+        setCenter(base.x * compress, base.y * compress, { zoom: 1.6, duration: 800 });
       }
     },
-    [nodes, setCenter, zoom, viewport.x]
+    [nodes, setCenter, zoom, viewport.x, vertical, verticalPositions, compress]
   );
 
   const closePanels = useCallback(() => {
@@ -1270,8 +1366,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const previewNode = nodes.find((n) => n.id === previewNodeId) || null;
   let previewStyle = null;
   if (previewNode) {
-    const sx = previewNode.position.x * zoom + viewport.x;
-    const sy = previewNode.position.y * zoom + viewport.y;
+    const base = vertical ? (verticalPositions.get(previewNode.id) || previewNode.position) : previewNode.position;
+    const sx = base.x * compress * zoom + viewport.x;
+    const sy = base.y * compress * zoom + viewport.y;
     previewStyle = {
       left: Math.max(8, Math.min(sx + 150, Math.max(8, window.innerWidth - 430))),
       top: Math.max(8, Math.min(sy - 24, Math.max(8, window.innerHeight - 440))),
@@ -1281,8 +1378,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   return (
     <div className={`canvas-shell${editMode ? ' edit-mode' : ''}${studyMode ? ' study-mode' : ''}${focusMode ? ' focus-mode' : ''}`}>
       <div className="canvas-topbar">
-        <button className="btn" onClick={onBack}>
-          ← Canvases
+        <button className="btn icon-btn" onClick={onBack} title="Back to canvases" aria-label="Back to canvases">
+          <span aria-hidden="true">←</span>
         </button>
         {parentCanvases.length > 0 && (
           <div className="canvas-parents">
@@ -1299,82 +1396,51 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           </div>
         )}
         <div className="canvas-title">{canvasName}</div>
-        <div className="topbar-actions">
-          {!editMode ? (
-            <>
-              <button className="btn" onClick={() => setSearchOpen((o) => !o)}>
-                🔍 Search
-              </button>
-              <button className="btn" onClick={() => fitView({ padding: 0.2 })}>
-                Fit view
-              </button>
-              <button
-                className={`btn${tabularMode ? ' btn-tabular-active' : ''}`}
-                title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'}
-                onClick={() => setTabularMode((v) => !v)}
-              >
-                📊 Tabular Format
-              </button>
-              <button
-                className={`btn${zoomLock ? ' btn-zoom-lock-active' : ''}`}
-                title={
-                  zoomLock
-                    ? 'Zoom lock ON — scroll to pan the canvas instead of zooming'
-                    : 'Zoom lock OFF — scroll to zoom in/out'
-                }
-                onClick={() => setZoomLock((v) => !v)}
-              >
-                {zoomLock ? '🔒' : '🔓'} Zoom Lock
-              </button>
-              <button className="btn" onClick={() => setLinkModalOpen(true)}>
-                🔗 Link canvas
-              </button>
-              <button className="btn" onClick={() => setAiPanelOpen((o) => !o)}>
-                🤖 AI
-              </button>
-              <button
-                className="btn"
-                onClick={exportExcel}
-                title="Download this brain map as an Excel workbook (Outline + Tree sheets)"
-              >
-                ⬇ Export Excel
-              </button>
-              <button className="btn btn-edit" onClick={enterEditMode}>
-                ✏️ Edit
-              </button>
-              <button
-                className="btn btn-focus"
-                onClick={() => {
-                  setFocusedNodeIds([]);
-                  setFocusMode(true);
-                }}
-              >
-                🎯 Focus Mode
-              </button>
-              <button className="btn" onClick={() => setStudyMode(true)}>
-                🖥 Study Mode
-              </button>
-            </>
-          ) : (
-            <>
-              <button className="btn" onClick={undo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">
-                ↶ Undo
-              </button>
-              <button className="btn" onClick={redo} disabled={!redoStack.length} title="Redo (Ctrl+A)">
-                ↷ Redo
-              </button>
-              <button className="btn" onClick={enterAlignMode} title="Horizontal Aligner — drag lines to align nodes">
-                ↔ Aligner
-              </button>
-              <button className="btn btn-primary" onClick={saveEdit}>
-                💾 Save
-              </button>
-              <button className="btn" onClick={cancelEdit}>
-                ✖ Cancel
-              </button>
-            </>
-          )}
-        </div>
+        <button
+          className={`btn icon-btn nodes-locked-toggle${nodesLocked ? ' icon-btn-active' : ''}`}
+          onClick={() => setNodesLocked((v) => !v)}
+          title={nodesLocked ? 'Nodes Locked — all nodes stay visible while zooming' : 'Nodes Unlocked — child nodes fade in/out with zoom'}
+          aria-label={nodesLocked ? 'Nodes Locked' : 'Nodes Unlocked'}
+          aria-pressed={nodesLocked}
+        >
+          <span aria-hidden="true">{nodesLocked ? '🔒' : '🔓'}</span>
+        </button>
+        <button
+          className={`btn icon-btn tools-toggle${toolsOpen ? ' tools-toggle-open' : ''}`}
+          onClick={() => setToolsOpen((o) => !o)}
+          title="Tools"
+          aria-label="Tools"
+          aria-expanded={toolsOpen}
+        >
+          <span aria-hidden="true">⚙️</span>
+        </button>
+        {toolsOpen && (
+          <div className="tools-menu">
+            {!editMode ? (
+              <>
+                <ToolIcon glyph="🔍" label="Find topics" title="Search" active={searchOpen} onActivate={() => setSearchOpen((o) => !o)} />
+                <ToolIcon glyph="⛶" label="Fit screen" title="Fit the whole tree to the screen" onActivate={fitToScreen} />
+                <ToolIcon glyph="🔃" label="Rotate view" title="Rotate the tree 90° (top-down)" active={vertical} onActivate={() => setVertical((v) => !v)} />
+                <ToolIcon glyph="📊" label="Table view" title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'} active={tabularMode} onActivate={() => setTabularMode((v) => !v)} />
+                <ToolIcon glyph={zoomLock ? '🔒' : '🔓'} label={zoomLock ? 'Unlock zoom' : 'Lock zoom'} title={zoomLock ? 'Zoom lock ON — scroll to pan the canvas' : 'Zoom lock OFF — scroll to zoom'} active={zoomLock} onActivate={() => setZoomLock((v) => !v)} />
+                <ToolIcon glyph="🔗" label="Link canvas" title="Link another canvas" onActivate={() => setLinkModalOpen(true)} />
+                <ToolIcon glyph="🤖" label="Ask AI" title="AI Q&A / build map" active={aiPanelOpen} onActivate={() => setAiPanelOpen((o) => !o)} />
+                <ToolIcon glyph="⬇️" label="Export Excel" title="Download as Excel workbook" onActivate={exportExcel} />
+                <ToolIcon glyph="✏️" label="Edit mode" title="Edit canvas" onActivate={enterEditMode} />
+                <ToolIcon glyph="🎯" label="Focus mode" title="Focus Mode" onActivate={() => { setFocusedNodeIds([]); setFocusMode(true); }} />
+                <ToolIcon glyph="🖥️" label="Study mode" title="Study Mode" onActivate={() => setStudyMode(true)} />
+              </>
+            ) : (
+              <>
+                <ToolIcon glyph="↶" label="Undo" title="Undo (Ctrl+Z)" disabled={!undoStack.length} onActivate={undo} />
+                <ToolIcon glyph="↷" label="Redo" title="Redo (Ctrl+A)" disabled={!redoStack.length} onActivate={redo} />
+                <ToolIcon glyph="↔" label="Align nodes" title="Horizontal Aligner" onActivate={enterAlignMode} />
+                <ToolIcon glyph="💾" label="Save changes" title="Save" onActivate={saveEdit} />
+                <ToolIcon glyph="✖" label="Cancel edit" title="Cancel" onActivate={cancelEdit} />
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="canvas-body">
@@ -1405,7 +1471,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             panOnScroll={zoomLock}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!studyMode && !alignMode && !connectMode}
+            nodesDraggable={!studyMode && !alignMode && !connectMode && !vertical && compress === 1}
             nodesConnectable={!editMode || connectMode}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
@@ -1428,37 +1494,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
-          {!studyMode && (
+          {!studyMode && editMode && (
             <div className="canvas-toolbar">
-              {!editMode ? (
-                <>
-                  <button className="btn btn-primary" onClick={addChild}>
-                    ＋ Child
-                  </button>
-                  <button className="btn" onClick={addSibling}>
-                    ＋ Sibling
-                  </button>
-                  <button className="btn" onClick={addRoot}>
-                    ＋ Root
-                  </button>
-                  <span className="toolbar-hint">Drag between nodes to connect topics</span>
-                </>
-              ) : (
-                <>
-                  <button
-                    className={`btn${connectMode ? ' btn-connect-active' : ''}`}
-                    onClick={() => setConnectMode((v) => !v)}
-                    title="Connect Mode — drag from a node's centre onto another node to make it a child"
-                  >
-                    🔗 {connectMode ? 'Connecting…' : 'Connect Mode'}
-                  </button>
-                  <span className="toolbar-hint edit-hint">
-                    {connectMode
-                      ? "Drag from a node's centre and drop on another node to make it a child."
-                      : '✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.'}
-                  </span>
-                </>
-              )}
+              <button
+                className={`btn${connectMode ? ' btn-connect-active' : ''}`}
+                onClick={() => setConnectMode((v) => !v)}
+                title="Connect Mode — drag from a node's centre onto another node to make it a child"
+              >
+                🔗 {connectMode ? 'Connecting…' : 'Connect Mode'}
+              </button>
+              <span className="toolbar-hint edit-hint">
+                {connectMode
+                  ? "Drag from a node's centre and drop on another node to make it a child."
+                  : '✏️ Edit mode — click a node and press Delete (or use the panel). Ctrl+Z / Ctrl+A to undo / redo.'}
+              </span>
             </div>
           )}
 
