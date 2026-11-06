@@ -1299,11 +1299,11 @@ mark {
   border-color: #34d399;
 }
 
-.canvas-shell.study-mode .canvas-topbar {
+.canvas-shell.fullscreen-mode .canvas-topbar {
   display: none;
 }
 
-.study-exit {
+.fullscreen-exit {
   position: fixed;
   top: 16px;
   right: 16px;
@@ -1652,6 +1652,40 @@ mark {
   align-items: center;
   gap: 8px;
   z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.canvas-floating-actions {
+  position: absolute;
+  left: 16px;
+  bottom: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.floating-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.floating-btn-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
 }
 
 .zoom-icon {
@@ -2267,6 +2301,18 @@ mark {
   .zoom-control {
     left: 10px;
     bottom: 130px;
+  }
+
+  .canvas-floating-actions {
+    left: 10px;
+    bottom: 174px;
+  }
+
+  /* Auto-hide floating controls (zoom / fullscreen / freeze) on mobile */
+  .canvas-shell.controls-hidden .zoom-control,
+  .canvas-shell.controls-hidden .canvas-floating-actions {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* E-paper page */
