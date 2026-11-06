@@ -14,6 +14,7 @@ import NodePreview from './NodePreview';
 import FocusSearch from './FocusSearch';
 import ZoomControl from './ZoomControl';
 import HorizontalAligner from './HorizontalAligner';
+import ShapeDrawer from './ShapeDrawer';
 
 const nodeTypes = { mindmap: MindMapNode };
 
@@ -403,6 +404,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [vertical, setVertical] = useState(false);
   const [compress, setCompress] = useState(1);
   const [nodesLocked, setNodesLocked] = useState(true);
+  const [drawMode, setDrawMode] = useState(false);
   const verticalPositions = useMemo(() => (vertical ? layoutVertical(nodes) : null), [vertical, nodes]);
   const alignBaselineRef = useRef(null);
   const [revealedParentIds, setRevealedParentIds] = useState(() => new Set());
@@ -641,16 +643,49 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setSelectedNodeId(null);
     setVertical(false);
     setCompress(1);
+    setDrawMode(false);
     setEditMode(true);
   }, [makeSnapshot]);
 
   const exitEditMode = useCallback(() => {
     setEditMode(false);
     setConnectMode(false);
+    setDrawMode(false);
     setUndoStack([]);
     setRedoStack([]);
     baselineRef.current = null;
   }, []);
+
+  // Convert drawn shapes into staged (undoable) brain-map nodes at their drawn positions.
+  const generateFromShapes = useCallback(
+    (shapes) => {
+      if (!shapes.length) return;
+      pushUndo();
+      const created = shapes.map((s) => {
+        const cx = s.x + s.w / 2;
+        const cy = s.y + s.h / 2;
+        return {
+          id: `tmp-${++tempIdRef.current}`,
+          type: 'mindmap',
+          position: { x: (cx - viewport.x) / viewport.zoom, y: (cy - viewport.y) / viewport.zoom },
+          data: {
+            label: (s.text || '').trim() || 'New topic',
+            content: '',
+            depth: 0,
+            isRoot: true,
+            parent_id: null,
+            attachmentCount: 0,
+            linked_canvas_id: null,
+            linked_canvas_name: '',
+          },
+        };
+      });
+      setNodes((nds) => [...nds, ...created]);
+      setSelectedNodeId(null);
+      setDrawMode(false);
+    },
+    [pushUndo, setNodes, viewport]
+  );
 
   const saveEdit = useCallback(async () => {
     const baseline = baselineRef.current;
@@ -1432,6 +1467,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               </>
             ) : (
               <>
+                <ToolIcon glyph="🎨" label="Draw shapes" title="Draw shapes and turn them into map nodes" active={drawMode} onActivate={() => setDrawMode((v) => !v)} />
                 <ToolIcon glyph="↶" label="Undo" title="Undo (Ctrl+Z)" disabled={!undoStack.length} onActivate={undo} />
                 <ToolIcon glyph="↷" label="Redo" title="Redo (Ctrl+A)" disabled={!redoStack.length} onActivate={redo} />
                 <ToolIcon glyph="↔" label="Align nodes" title="Horizontal Aligner" onActivate={enterAlignMode} />
@@ -1482,6 +1518,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               maskColor="rgba(241,245,249,0.7)"
             />
           </ReactFlow>
+
+          {editMode && drawMode && (
+            <ShapeDrawer
+              onGenerate={generateFromShapes}
+              onClose={() => setDrawMode(false)}
+            />
+          )}
 
           <ZoomControl />
 
