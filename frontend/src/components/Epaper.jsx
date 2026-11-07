@@ -247,6 +247,12 @@ export default function Epaper({ onBack, onOpenCanvas }) {
     setTimeout(() => setPromptMsg(''), 2000);
   };
 
+  const deleteHistoryEntry = (id) => {
+    const next = history.filter((h) => h.id !== id);
+    setHistory(next);
+    saveHistory(next);
+  };
+
   const exportToCanvas = async () => {
     if (!analysis || !analysis.analysis) return;
     setExporting(true);
@@ -511,7 +517,7 @@ export default function Epaper({ onBack, onOpenCanvas }) {
 
         {history.length > 0 && (
           <div className="epaper-history">
-            <h3>📚 Past analyses</h3>
+            <h3>📚 Past analyses ({history.length}/50)</h3>
             {history.map((h) => (
               <details key={h.id} className="epaper-history-item">
                 <summary>
@@ -520,6 +526,18 @@ export default function Epaper({ onBack, onOpenCanvas }) {
                     {new Date(h.at).toLocaleString()}
                     {h.model ? ` · ${h.model}` : ''}
                   </span>
+                  <button
+                    className="epaper-history-delete"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deleteHistoryEntry(h.id);
+                    }}
+                    title="Delete this analysis"
+                    aria-label="Delete this analysis"
+                  >
+                    🗑
+                  </button>
                 </summary>
                 <div className="epaper-history-body">{h.analysis}</div>
               </details>
