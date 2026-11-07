@@ -2151,6 +2151,26 @@ mark {
   margin: 4px 0;
 }
 
+.epaper-download-link {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--primary);
+}
+
+.epaper-download-link:hover {
+  background: #eef2f7;
+}
+
+.epaper-download-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .epaper-login-msg {
   margin-top: 10px;
   font-size: 13px;

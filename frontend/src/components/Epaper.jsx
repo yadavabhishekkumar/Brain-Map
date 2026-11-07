@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, downloadEpaperFile } from '../api';
 
 export default function Epaper({ onBack, onOpenCanvas }) {
   const [date, setDate] = useState('');
@@ -28,6 +28,7 @@ export default function Epaper({ onBack, onOpenCanvas }) {
   const [cookieBusy, setCookieBusy] = useState(false);
   const [cookieMsg, setCookieMsg] = useState('');
   const [savedCookieNames, setSavedCookieNames] = useState([]);
+  const [downloadingFile, setDownloadingFile] = useState(null);
 
   const download = async () => {
     if (!date) {
@@ -115,6 +116,18 @@ export default function Epaper({ onBack, onOpenCanvas }) {
       setCookieMsg(e.message);
     } finally {
       setCookieBusy(false);
+    }
+  };
+
+  const downloadFile = async (d) => {
+    setDownloadingFile(d.date || d.filename);
+    setError('');
+    try {
+      await downloadEpaperFile(d.filePath, d.filename);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDownloadingFile(null);
     }
   };
 
@@ -251,6 +264,14 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           {result.downloaded.map((d) => (
             <div key={d.date} className="epaper-result-ok">
               ✅ <strong>{d.filename}</strong> — {(d.size / 1024 / 1024).toFixed(2)} MB
+              <button
+                className="epaper-download-link"
+                onClick={() => downloadFile(d)}
+                disabled={downloadingFile === d.date}
+                title="Download to device"
+              >
+                {downloadingFile === d.date ? '…' : '⬇'}
+              </button>
             </div>
           ))}
           {result.skipped.map((s) => (
@@ -282,6 +303,16 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           ) : lastDownload ? (
             <span>
               📄 Using last download: <strong>{lastDownload.filename}</strong> (click to change)
+              <button
+                className="epaper-download-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadFile(lastDownload);
+                }}
+                title="Download to device"
+              >
+                ⬇
+              </button>
             </span>
           ) : (
             <span>Drop a PDF here, or click to browse</span>

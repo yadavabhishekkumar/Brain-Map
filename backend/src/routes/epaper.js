@@ -366,6 +366,40 @@ router.post('/download', async (req, res, next) => {
   }
 });
 
+// Stream a downloaded PDF back to the device (for mobile/cloud use).
+router.get('/file', async (req, res, next) => {
+  try {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ error: 'path is required' });
+
+    // Resolve and validate the path to prevent directory traversal.
+    const resolved = path.resolve(String(filePath));
+    const home = path.resolve(os.homedir());
+    const appRoot = path.resolve(__dirname, '..', '..');
+    const allowed = [home, appRoot].some(
+      (root) => resolved === root || resolved.startsWith(root + path.sep)
+    );
+    if (!allowed || !resolved.toLowerCase().endsWith('.pdf')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+
+    let stat;
+    try {
+      stat = fs.statSync(resolved);
+    } catch (e) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    if (!stat.isFile()) return res.status(404).json({ error: 'File not found' });
+
+    res.download(resolved, path.basename(resolved), (err) => {
+      if (err && !res.headersSent) next(err);
+      else if (err) console.error('[epaper] stream error:', err.message);
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Parse a PDF (upload or file path) and analyze its text with DeepSeek.
 router.post('/analyze', upload.single('file'), async (req, res, next) => {
   try {

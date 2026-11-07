@@ -115,3 +115,30 @@ export const api = {
 };
 
 export const fileUrl = (id) => `${API_BASE}/attachments/${id}/file`;
+
+// Fetch a downloaded e-paper PDF as a Blob (with auth) and trigger a browser download.
+export async function downloadEpaperFile(filePath, filename) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/epaper/file?path=${encodeURIComponent(filePath)}`, { headers });
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = body.error || message;
+    } catch (e) {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'epaper.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
