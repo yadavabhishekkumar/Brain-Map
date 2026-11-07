@@ -392,9 +392,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [redoStack, setRedoStack] = useState([]);
   const viewport = useViewport();
   const zoom = viewport.zoom;
-  const { setCenter, fitView } = useReactFlow();
+  const { setCenter, fitView, zoomIn } = useReactFlow();
   const didFit = useRef(false);
   const clickTimer = useRef(null);
+  const paneClickTimer = useRef(null);
   const baselineRef = useRef(null);
   const tempIdRef = useRef(0);
   const mergeRef = useRef([]);
@@ -1449,7 +1450,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   const handlePaneClick = useCallback(() => {
     closePanels();
-  }, [closePanels]);
+    // Double-tap/click on the empty canvas zooms in (unless zoom is locked);
+    // a single tap just deselects. Taps on a node never reach this handler.
+    if (!zoomLock) {
+      if (paneClickTimer.current) {
+        clearTimeout(paneClickTimer.current);
+        paneClickTimer.current = null;
+        zoomIn();
+      } else {
+        paneClickTimer.current = setTimeout(() => {
+          paneClickTimer.current = null;
+        }, 260);
+      }
+    }
+  }, [closePanels, zoomIn, zoomLock]);
 
   // Single click -> read-only preview (after a short delay so a double-click wins).
   // Linked-canvas nodes are skipped: only double-click navigates into them.
