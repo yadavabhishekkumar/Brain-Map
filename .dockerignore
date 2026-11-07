@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/node_modules
+**/dist
+backend/.epaper-profile
+backend/storage
+**/.env
+*.log
+client_secret_*.json
+*.apps.googleusercontent.com.json
