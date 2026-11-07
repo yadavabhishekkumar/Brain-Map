@@ -8,6 +8,7 @@ const storage = require('../storage');
 const es = require('../es');
 const { recomputeDepths, computePositions, relayoutCanvas } = require('../services/layout');
 const { requireCanvasOwner, nodeCanvasId } = require('../services/access');
+const { uniqueCanvasName } = require('../services/names');
 
 async function requireNodeOwner(req, nodeId) {
   const canvasId = await nodeCanvasId(nodeId);
@@ -88,6 +89,7 @@ router.post('/respond', async (req, res, next) => {
   try {
     const { prompt, context, model, canvas_id } = req.body || {};
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt is required' });
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     if (canvas_id) {
       const accessErr = await requireCanvasOwner(req.user, canvas_id);
       if (accessErr) return res.status(accessErr.status).json({ error: accessErr.error });
@@ -417,15 +419,17 @@ router.post('/apply', async (req, res, next) => {
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean);
-      const canvasName =
+      const canvasName = await uniqueCanvasName(
         (flat[0] && flat[0].label ? String(flat[0].label).slice(0, 100) : '') ||
-        (rawLines[0] || '')
-          .replace(/^#{1,6}\s*/, '')
-          .replace(/^[-*•▪◦▫]\s*/, '')
-          .replace(/^\d{1,2}[.)]\s*/, '')
-          .trim()
-          .slice(0, 100) ||
-        `${rootNode.label} — Map`;
+          (rawLines[0] || '')
+            .replace(/^#{1,6}\s*/, '')
+            .replace(/^[-*•▪◦▫]\s*/, '')
+            .replace(/^\d{1,2}[.)]\s*/, '')
+            .trim()
+            .slice(0, 100) ||
+          `${rootNode.label} — Map`,
+        req.user.sub
+      );
       const description = rawLines.slice(0, 3).join(' ').slice(0, 240);
 
       // 1) Create the new canvas and populate it with the generated map.
@@ -552,7 +556,7 @@ router.post('/import-text', async (req, res, next) => {
       attachY = n.rows[0].y;
       attachDepth = n.rows[0].depth;
     } else {
-      const name = (canvas_name || 'E-Paper Analysis').trim() || 'E-Paper Analysis';
+      const name = await uniqueCanvasName(canvas_name || 'E-Paper Analysis', req.user.sub);
       canvasId = uuid();
       await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
         canvasId,

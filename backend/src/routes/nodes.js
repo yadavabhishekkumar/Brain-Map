@@ -7,6 +7,7 @@ const es = require('../es');
 const storage = require('../storage');
 const { recomputeDepths, relayoutCanvas } = require('../services/layout');
 const { requireCanvasOwner, requireCanvasRead, nodeCanvasId } = require('../services/access');
+const { uniqueCanvasName } = require('../services/names');
 
 const router = express.Router();
 const upload = multer({
@@ -273,7 +274,10 @@ router.post('/:id/export', async (req, res, next) => {
     const rows = subtree.rows;
     if (!rows.length) return res.status(404).json({ error: 'Node not found' });
 
-    const canvasName = (self.label || 'Exported topic').trim().slice(0, 100) || 'Exported topic';
+    const canvasName = await uniqueCanvasName(
+      (self.label || 'Exported topic').trim().slice(0, 100) || 'Exported topic',
+      req.user.sub
+    );
     const description = (self.content || '').trim().slice(0, 240);
 
     // 2) Create the new canvas.

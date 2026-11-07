@@ -22,7 +22,7 @@ services:
     rootDir: backend
     plan: free
     # Build the frontend into frontend/dist (served by Express) during deploy.
-    buildCommand: npm install && cd ../frontend && npm install && npm run build
+    buildCommand: npm install && npx playwright install --with-deps chromium && cd ../frontend && npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -30,6 +30,10 @@ services:
         value: "20.18.0"
       - key: SKIP_INSTALL_DEPS
         value: "true"
+      # Skip Playwright's default all-browsers download during `npm install`;
+      # we install only Chromium explicitly in buildCommand instead.
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: "1"
       # Neon (free) Postgres connection string. Paste it in the Render dashboard
       # when prompted for this secret. It looks like:
       #   postgresql://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require

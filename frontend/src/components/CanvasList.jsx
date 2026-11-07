@@ -231,34 +231,38 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
         </div>
       </div>
 
-      <div className="ai-model-selector">
-        <label htmlFor="ai-model">🤖 Default AI model</label>
-        <select
-          id="ai-model"
-          value={aiModel}
-          onChange={(e) => {
-            setAiModel(e.target.value);
-            setAiModelState(e.target.value);
-          }}
-        >
-          {AI_MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="ai-model-hint">{AI_MODELS.find((m) => m.id === aiModel)?.hint || ''}</div>
-
-      <div className="epaper-banner">
-        <div>
-          <div className="epaper-banner-title">📰 The Hindu E-Paper</div>
-          <div className="epaper-banner-sub">Systematically download daily e-paper PDFs by date.</div>
+      {user && (
+        <div className="ai-model-selector">
+          <label htmlFor="ai-model">🤖 Default AI model</label>
+          <select
+            id="ai-model"
+            value={aiModel}
+            onChange={(e) => {
+              setAiModel(e.target.value);
+              setAiModelState(e.target.value);
+            }}
+          >
+            {AI_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
         </div>
-        <button className="btn" onClick={onOpenEpaper}>
-          Open Downloader
-        </button>
-      </div>
+      )}
+      {user && <div className="ai-model-hint">{AI_MODELS.find((m) => m.id === aiModel)?.hint || ''}</div>}
+
+      {user && (
+        <div className="epaper-banner">
+          <div>
+            <div className="epaper-banner-title">📰 The Hindu E-Paper</div>
+            <div className="epaper-banner-sub">Systematically download daily e-paper PDFs by date.</div>
+          </div>
+          <button className="btn" onClick={onOpenEpaper}>
+            Open Downloader
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="muted">Loading canvases…</div>
