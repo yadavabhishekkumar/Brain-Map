@@ -7,8 +7,10 @@ const { chromium } = require('playwright-core');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const ai = require('../ai');
+const { authRequired } = require('../services/auth');
 
 const router = express.Router();
+router.use(authRequired);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const BASE = 'https://epaper.thehindu.com/ccidist-ws/th/th_international';

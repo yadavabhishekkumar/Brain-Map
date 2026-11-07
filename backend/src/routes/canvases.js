@@ -5,6 +5,7 @@ const { indexNode } = require('../services/indexer');
 const es = require('../es');
 const storage = require('../storage');
 const { requireCanvasOwner, canManageCanvas } = require('../services/access');
+const { uniqueCanvasName } = require('../services/names');
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     if (!req.user) return res.status(401).json({ error: 'Authentication required to create a canvas' });
-    const name = (req.body.name || 'Untitled canvas').trim() || 'Untitled canvas';
+    const name = await uniqueCanvasName(req.body.name || 'Untitled canvas', req.user.sub);
     const description = (req.body.description || '').trim();
     const id = uuid();
     await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
@@ -123,8 +124,10 @@ router.put('/:id', async (req, res, next) => {
     const values = [];
     let i = 1;
     if (req.body.name !== undefined) {
+      const raw = (req.body.name || '').trim();
+      const newName = raw ? await uniqueCanvasName(raw, req.user.sub, id) : raw;
       fields.push(`name=$${i++}`);
-      values.push(req.body.name);
+      values.push(newName);
     }
     if (req.body.description !== undefined) {
       fields.push(`description=$${i++}`);
@@ -320,9 +323,10 @@ router.post('/:id/fork', async (req, res, next) => {
     }
 
     const newId = uuid();
+    const forkName = await uniqueCanvasName(`${srcCanvas.name} (fork)`, req.user.sub);
     await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
       newId,
-      `${srcCanvas.name} (fork)`,
+      forkName,
       srcCanvas.description || '',
       req.user.sub,
     ]);
@@ -355,7 +359,7 @@ router.post('/:id/fork', async (req, res, next) => {
       }
     }
 
-    res.status(201).json({ canvas_id: newId, name: `${srcCanvas.name} (fork)` });
+    res.status(201).json({ canvas_id: newId, name: forkName });
   } catch (e) {
     next(e);
   }
