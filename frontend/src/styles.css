@@ -2225,6 +2225,51 @@ mark {
   margin-top: 0;
 }
 
+.epaper-cookie-help {
+  margin: 8px 0 10px;
+  font-size: 13px;
+}
+
+.epaper-cookie-help summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.epaper-cookie-help ol {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.epaper-cookie-help li {
+  margin-bottom: 6px;
+}
+
+.epaper-cookie-saved {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.epaper-cookie-saved-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.epaper-cookie-chip {
+  background: #eef2f7;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* ---------- E-Paper analysis (step 2) ---------- */
 .epaper-section {
   margin-top: 24px;

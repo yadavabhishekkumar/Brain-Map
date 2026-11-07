@@ -94,16 +94,19 @@ function isHinduDomain(d) {
   return s.endsWith('thehindu.com') || s.endsWith('thehindu.in');
 }
 
-// Parse a pasted cookie blob into Playwright cookie objects. Accepts either a JSON
-// array (e.g. an "EditThisCookie" export) or a "Cookie: name=value; name2=value2" string.
+// Parse a pasted cookie blob into Playwright cookie objects. Accepts, in order of
+// detection: a JSON array (Cookie-Editor / EditThisCookie export), a Netscape
+// cookies.txt export, a `curl` command ("Copy as cURL"), or a plain
+// "Cookie: name=value; name2=value2" header string.
 function parseCookies(input) {
-  const text = (input || '').trim();
+  const text = String(input || '').trim();
   if (!text) return [];
 
+  // 1) JSON array export
   if (text.startsWith('[')) {
     try {
       const arr = JSON.parse(text);
-      return arr
+      const mapped = arr
         .filter((c) => c && c.name && isHinduDomain(c.domain))
         .map((c) => ({
           name: c.name,
@@ -119,11 +122,64 @@ function parseCookies(input) {
           secure: !!c.secure,
           sameSite: mapSameSite(c.sameSite),
         }));
+      if (mapped.length) return mapped;
     } catch (e) {
-      // fall through to header parsing
+      // fall through
     }
   }
 
+  // 2) Netscape cookies.txt export (tab-separated rows)
+  if (text.includes('\t')) {
+    const cookies = [];
+    for (const line of text.split(/\r?\n/)) {
+      const raw = line.trim();
+      if (!raw) continue;
+      if (raw.startsWith('#') && !raw.startsWith('#HttpOnly_')) continue;
+      const isHttpOnly = raw.startsWith('#HttpOnly_');
+      const parts = (isHttpOnly ? raw.slice('#HttpOnly_'.length) : raw).split('\t');
+      if (parts.length < 6) continue;
+      const domain = (parts[0] || '').trim();
+      const pathPart = (parts[2] || '').trim();
+      const secure = String(parts[3] || '').trim().toUpperCase() === 'TRUE';
+      const expiry = (parts[4] || '').trim();
+      const name = (parts[5] || '').trim();
+      const value = (parts.slice(6).join('\t') || '').trim();
+      if (!name || !isHinduDomain(domain)) continue;
+      cookies.push({
+        name,
+        value,
+        domain,
+        path: pathPart || '/',
+        expires: expiry && expiry !== '0' ? Number(expiry) : -1,
+        httpOnly: isHttpOnly,
+        secure,
+        sameSite: 'Lax',
+      });
+    }
+    if (cookies.length) return cookies;
+  }
+
+  // 3) `curl` command ("Copy as cURL (bash)") — extract the Cookie header(s).
+  const curlChunks = [];
+  for (const m of text.matchAll(/(?:-H|--header)\s+['"]cookie:\s*([^'"]+)['"]/gi)) curlChunks.push(m[1]);
+  for (const m of text.matchAll(/(?:-b|--cookie)\s+['"]([^'"]+)['"]/gi)) curlChunks.push(m[1]);
+  if (curlChunks.length) {
+    const cookies = [];
+    for (const chunk of curlChunks) {
+      for (const part of chunk.split(';')) {
+        const eq = part.indexOf('=');
+        if (eq <= 0) continue;
+        const name = part.slice(0, eq).trim();
+        const value = part.slice(eq + 1).trim();
+        if (name && value) {
+          cookies.push({ name, value, domain: '.thehindu.com', path: '/', expires: -1, httpOnly: false, secure: true, sameSite: 'Lax' });
+        }
+      }
+    }
+    if (cookies.length) return cookies;
+  }
+
+  // 4) Plain header / raw "name=value; name2=value2"
   let t = text.replace(/^Cookie\s*:/i, '');
   const cookies = [];
   for (const part of t.split(';')) {
@@ -297,7 +353,11 @@ router.post('/cookies', async (req, res, next) => {
     const parsed = parseCookies(cookies);
     if (!parsed.length) {
       return res.status(400).json({
-        error: 'No cookies found. Paste either a JSON cookie array or a "name=value; name2=value2" header string.',
+        error:
+          'No cookies could be read. Log in at epaper.thehindu.com first, then paste one of these:\n' +
+          '• a "Cookie: name=value; …" header,\n' +
+          '• a cookies.txt export (from the "Get cookies.txt LOCALLY" extension), or\n' +
+          '• a JSON cookie array (from the Cookie-Editor extension).',
       });
     }
     saveCookies(parsed);
