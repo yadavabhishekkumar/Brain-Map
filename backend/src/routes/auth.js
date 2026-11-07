@@ -4,13 +4,20 @@ const { OAuth2Client } = require('google-auth-library');
 const { pool } = require('../db');
 const { uuid } = require('../util');
 const { signToken, authRequired } = require('../services/auth');
+const { isSuperUser } = require('../services/access');
 const config = require('../config');
 
 const router = express.Router();
 const googleClient = new OAuth2Client(config.auth.googleClientId);
 
 function publicUser(row) {
-  return { id: row.id, email: row.email, name: row.name, avatar: row.avatar };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    avatar: row.avatar,
+    is_superuser: isSuperUser(row),
+  };
 }
 
 // POST /api/auth/signup  { email, password, name }

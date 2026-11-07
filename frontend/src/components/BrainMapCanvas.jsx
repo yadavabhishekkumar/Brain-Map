@@ -268,7 +268,7 @@ function TabularView({ nodes, onOpenCanvas }) {
 
 // Icon-only action button. A single click reveals its two-word label; a
 // double click (two clicks within a short window) runs the action.
-function ToolIcon({ glyph, label, title, active, disabled, onActivate }) {
+function ToolIcon({ glyph, label, title, active, disabled, onActivate, immediate }) {
   const clickTimer = useRef(null);
   const labelTimer = useRef(null);
   const [showLabel, setShowLabel] = useState(false);
@@ -282,6 +282,10 @@ function ToolIcon({ glyph, label, title, active, disabled, onActivate }) {
 
   const handleClick = () => {
     if (disabled) return;
+    if (immediate) {
+      onActivate();
+      return;
+    }
     if (clickTimer.current) {
       // Second click inside the window => double-click => perform the action.
       clearTimeout(clickTimer.current);
@@ -408,6 +412,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [vertical, setVertical] = useState(false);
   const [compress, setCompress] = useState(1);
   const [nodesLocked, setNodesLocked] = useState(true);
+  const [canEdit, setCanEdit] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const verticalPositions = useMemo(() => (vertical ? layoutVertical(nodes) : null), [vertical, nodes]);
   const alignBaselineRef = useRef(null);
@@ -453,6 +458,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         }))
       );
       setParentCanvases(data.parentCanvases || []);
+      setCanEdit(!!(data.canvas && data.canvas.can_edit));
     } catch (e) {
       console.error(e);
       alert('Failed to load canvas: ' + e.message);
@@ -640,6 +646,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   );
 
   const enterEditMode = useCallback(() => {
+    if (!canEdit) return;
     baselineRef.current = makeSnapshot();
     setUndoStack([]);
     setRedoStack([]);
@@ -648,9 +655,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setVertical(false);
     setCompress(1);
     setDrawMode(false);
+    // Unlock nodes so they can be dragged while editing.
+    setFreezeNodes(false);
     mergeRef.current = [];
     setEditMode(true);
-  }, [makeSnapshot]);
+  }, [makeSnapshot, canEdit]);
 
   const exitEditMode = useCallback(() => {
     setEditMode(false);
@@ -660,6 +669,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setRedoStack([]);
     baselineRef.current = null;
     mergeRef.current = [];
+    setFreezeNodes(true);
   }, []);
 
   // Merge a node into its parent (undoable, staged): optionally append its
@@ -749,70 +759,74 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const saveEdit = useCallback(async () => {
     const baseline = baselineRef.current;
     if (!baseline) return;
-    const baseIds = new Set(baseline.nodes.map((n) => n.id));
-    const currIds = new Set(nodes.map((n) => n.id));
+    try {
+      const baseIds = new Set(baseline.nodes.map((n) => n.id));
+      const currIds = new Set(nodes.map((n) => n.id));
 
-    // 0. Merges first (reparent children + delete node atomically) so the
-    // children aren't cascade-deleted along with the merged node.
-    for (const m of mergeRef.current) {
-      await api.mergeNode(m.nodeId, m.mode);
-    }
-    const mergedIds = new Set(mergeRef.current.map((m) => m.nodeId));
-    mergeRef.current = [];
-
-    // 1. Deleted nodes (topmost only; cascade handles descendants)
-    const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id) && !mergedIds.has(n.id));
-    const deletedIds = new Set(deletedNodes.map((n) => n.id));
-    const topmost = deletedNodes.filter(
-      (n) => !(n.data && n.data.parent_id) || !deletedIds.has(n.data.parent_id)
-    );
-    for (const n of topmost) await api.deleteNode(n.id);
-
-    // 2. Added nodes (temp ids -> create, parents first)
-    const added = nodes.filter((n) => !baseIds.has(n.id));
-    const idMap = new Map();
-    const sortedAdded = [...added].sort(
-      (a, b) => ((a.data && a.data.depth) || 0) - ((b.data && b.data.depth) || 0)
-    );
-    for (const n of sortedAdded) {
-      const parentTemp = n.data && n.data.parent_id;
-      const parentReal = parentTemp && idMap.has(parentTemp) ? idMap.get(parentTemp) : parentTemp || null;
-      const created = await api.createNode(canvasId, {
-        label: n.data.label,
-        content: n.data.content || '',
-        parent_id: parentReal,
-        x: n.position.x,
-        y: n.position.y,
-      });
-      idMap.set(n.id, created.id);
-    }
-
-    // 3. Detached nodes (parent changed)
-    const baseMap = new Map(baseline.nodes.map((n) => [n.id, n]));
-    for (const n of nodes) {
-      if (!baseIds.has(n.id)) continue;
-      const b = baseMap.get(n.id);
-      const oldParent = (b.data && b.data.parent_id) || null;
-      const newParent = (n.data && n.data.parent_id) || null;
-      const moved = b.position.x !== n.position.x || b.position.y !== n.position.y;
-      const payload = {};
-      if (oldParent !== newParent) payload.parent_id = newParent;
-      if (moved) {
-        payload.x = n.position.x;
-        payload.y = n.position.y;
+      // 0. Merges first (reparent children + delete node atomically) so the
+      // children aren't cascade-deleted along with the merged node.
+      for (const m of mergeRef.current) {
+        await api.mergeNode(m.nodeId, m.mode);
       }
-      if (Object.keys(payload).length) await api.updateNode(n.id, payload);
-    }
+      const mergedIds = new Set(mergeRef.current.map((m) => m.nodeId));
+      mergeRef.current = [];
 
-    // 4. Deleted cross-link edges
-    const currEdgeIds = new Set(edges.map((e) => e.id));
-    for (const e of baseline.edges) {
-      if (!currEdgeIds.has(e.id)) await api.deleteEdge(e.id);
-    }
+      // 1. Deleted nodes (topmost only; cascade handles descendants)
+      const deletedNodes = baseline.nodes.filter((n) => !currIds.has(n.id) && !mergedIds.has(n.id));
+      const deletedIds = new Set(deletedNodes.map((n) => n.id));
+      const topmost = deletedNodes.filter(
+        (n) => !(n.data && n.data.parent_id) || !deletedIds.has(n.data.parent_id)
+      );
+      for (const n of topmost) await api.deleteNode(n.id);
 
-    exitEditMode();
-    setSelectedNodeId(null);
-    await load();
+      // 2. Added nodes (temp ids -> create, parents first)
+      const added = nodes.filter((n) => !baseIds.has(n.id));
+      const idMap = new Map();
+      const sortedAdded = [...added].sort(
+        (a, b) => ((a.data && a.data.depth) || 0) - ((b.data && b.data.depth) || 0)
+      );
+      for (const n of sortedAdded) {
+        const parentTemp = n.data && n.data.parent_id;
+        const parentReal = parentTemp && idMap.has(parentTemp) ? idMap.get(parentTemp) : parentTemp || null;
+        const created = await api.createNode(canvasId, {
+          label: n.data.label,
+          content: n.data.content || '',
+          parent_id: parentReal,
+          x: n.position.x,
+          y: n.position.y,
+        });
+        idMap.set(n.id, created.id);
+      }
+
+      // 3. Detached nodes (parent changed)
+      const baseMap = new Map(baseline.nodes.map((n) => [n.id, n]));
+      for (const n of nodes) {
+        if (!baseIds.has(n.id)) continue;
+        const b = baseMap.get(n.id);
+        const oldParent = (b.data && b.data.parent_id) || null;
+        const newParent = (n.data && n.data.parent_id) || null;
+        const moved = b.position.x !== n.position.x || b.position.y !== n.position.y;
+        const payload = {};
+        if (oldParent !== newParent) payload.parent_id = newParent;
+        if (moved) {
+          payload.x = n.position.x;
+          payload.y = n.position.y;
+        }
+        if (Object.keys(payload).length) await api.updateNode(n.id, payload);
+      }
+
+      // 4. Deleted cross-link edges
+      const currEdgeIds = new Set(edges.map((e) => e.id));
+      for (const e of baseline.edges) {
+        if (!currEdgeIds.has(e.id)) await api.deleteEdge(e.id);
+      }
+
+      exitEditMode();
+      setSelectedNodeId(null);
+      await load();
+    } catch (e) {
+      alert(e.message || 'Failed to save changes');
+    }
   }, [nodes, edges, canvasId, exitEditMode, load]);
 
   const cancelEdit = useCallback(() => {
@@ -1455,7 +1469,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       clearTimeout(clickTimer.current);
       setPreviewNodeId(null);
       const d = node.data || {};
-      if (d.linked_canvas_id) {
+      // In edit mode a linked-canvas node behaves like any other node: open its
+      // side panel (so it can be deleted or re-linked). Outside edit mode a
+      // double click keeps navigating into the linked canvas.
+      if (d.linked_canvas_id && !editMode) {
         onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
         return;
       }
@@ -1465,7 +1482,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       const available = window.innerWidth - sx - 60;
       setPanelWidth(Math.max(280, Math.min(520, available)));
     },
-    [zoom, viewport.x, onOpenCanvas]
+    [zoom, viewport.x, onOpenCanvas, editMode]
   );
 
   useEffect(() => {
@@ -1558,10 +1575,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <ToolIcon glyph="🔃" label="Rotate view" title="Rotate the tree 90° (top-down)" active={vertical} onActivate={() => setVertical((v) => !v)} />
                 <ToolIcon glyph="📊" label="Table view" title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'} active={tabularMode} onActivate={() => setTabularMode((v) => !v)} />
                 <ToolIcon glyph={zoomLock ? '🔒' : '🔓'} label={zoomLock ? 'Unlock zoom' : 'Lock zoom'} title={zoomLock ? 'Zoom lock ON — scroll to pan the canvas' : 'Zoom lock OFF — scroll to zoom'} active={zoomLock} onActivate={() => setZoomLock((v) => !v)} />
-                <ToolIcon glyph="🔗" label="Link canvas" title="Link another canvas" onActivate={() => setLinkModalOpen(true)} />
-                <ToolIcon glyph="🤖" label="Ask AI" title="AI Q&A / build map" active={aiPanelOpen} onActivate={() => setAiPanelOpen((o) => !o)} />
+                {canEdit && <ToolIcon glyph="🔗" label="Link canvas" title="Link another canvas" onActivate={() => setLinkModalOpen(true)} />}
+                {canEdit && <ToolIcon glyph="🤖" label="Ask AI" title="AI Q&A / build map" active={aiPanelOpen} onActivate={() => setAiPanelOpen((o) => !o)} />}
                 <ToolIcon glyph="⬇️" label="Export Excel" title="Download as Excel workbook" onActivate={exportExcel} />
-                <ToolIcon glyph="✏️" label="Edit mode" title="Edit canvas" onActivate={enterEditMode} />
+                {canEdit && <ToolIcon glyph="✏️" label="Edit mode" title="Edit canvas" onActivate={enterEditMode} />}
                 <ToolIcon glyph="🎯" label="Focus mode" title="Focus Mode" onActivate={() => { setFocusedNodeIds([]); setFocusMode(true); }} />
               </>
             ) : (
@@ -1570,8 +1587,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <ToolIcon glyph="↶" label="Undo" title="Undo (Ctrl+Z)" disabled={!undoStack.length} onActivate={undo} />
                 <ToolIcon glyph="↷" label="Redo" title="Redo (Ctrl+A)" disabled={!redoStack.length} onActivate={redo} />
                 <ToolIcon glyph="↔" label="Align nodes" title="Horizontal Aligner" onActivate={enterAlignMode} />
-                <ToolIcon glyph="💾" label="Save changes" title="Save" onActivate={saveEdit} />
-                <ToolIcon glyph="✖" label="Cancel edit" title="Cancel" onActivate={cancelEdit} />
+                <ToolIcon glyph="💾" label="Save changes" title="Save" immediate onActivate={saveEdit} />
+                <ToolIcon glyph="✖" label="Cancel edit" title="Cancel" immediate onActivate={cancelEdit} />
               </>
             )}
           </div>
@@ -1607,8 +1624,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             panOnScroll={zoomLock}
             defaultEdgeOptions={{ type: 'smoothstep' }}
             deleteKeyCode={editMode ? ['Backspace', 'Delete'] : null}
-            nodesDraggable={!freezeNodes && !alignMode && !connectMode && !vertical && compress === 1}
-            nodesConnectable={!editMode || connectMode}
+            nodesDraggable={canEdit && !freezeNodes && !alignMode && !connectMode && !vertical && compress === 1}
+            nodesConnectable={canEdit && (!editMode || connectMode)}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
             <MiniMap
@@ -1640,14 +1657,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
               </svg>
             </button>
-            <button
-              className={`floating-btn${freezeNodes ? ' floating-btn-active' : ''}`}
-              onClick={() => setFreezeNodes((v) => !v)}
-              title={freezeNodes ? 'Unfreeze Nodes' : 'Freeze Nodes'}
-              aria-label="Freeze Nodes"
-            >
-              ❄️
-            </button>
+            {canEdit && (
+              <button
+                className={`floating-btn${freezeNodes ? ' floating-btn-active' : ''}`}
+                onClick={() => setFreezeNodes((v) => !v)}
+                title={freezeNodes ? 'Unfreeze Nodes' : 'Freeze Nodes'}
+                aria-label="Freeze Nodes"
+              >
+                ❄️
+              </button>
+            )}
           </div>
 
           <ZoomControl />
@@ -1708,6 +1727,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               top={previewStyle.top}
               onClose={closePanels}
               onChanged={load}
+              readOnly={!canEdit}
             />
           )}
           </div>
@@ -1721,6 +1741,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onClose={closePanels}
             onOpenCanvas={onOpenCanvas}
             editMode={editMode}
+            readOnly={!canEdit}
             onDeleteNode={onDeleteNode}
             onMergeNode={stageMerge}
             width={panelWidth}
@@ -1769,9 +1790,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               </button>
             </>
           ) : (
-            <button className="btn btn-sm btn-edit" onClick={enterEditMode}>
-              ✏️ Edit
-            </button>
+            canEdit && (
+              <button className="btn btn-sm btn-edit" onClick={enterEditMode}>
+                ✏️ Edit
+              </button>
+            )
           )}
           <button
             className="btn btn-sm focus-exit"

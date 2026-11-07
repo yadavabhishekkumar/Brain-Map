@@ -41,4 +41,9 @@ module.exports = {
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   },
+  // Super users (e.g. the app creator) may manage/delete any public canvas.
+  superUserEmails: (process.env.SUPERUSER_EMAILS || 'ay70415@gmail.com')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 };

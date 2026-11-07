@@ -726,15 +726,34 @@ body.resizing {
 /* Account bar + visibility badges */
 .account-bar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.account-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.visibility-filter {
+  display: flex;
+  gap: 6px;
 }
 
 .account-name {
   font-weight: 600;
   font-size: 14px;
+}
+
+.super-badge {
+  font-size: 14px;
+  cursor: help;
+  margin: 0 4px;
 }
 
 .canvas-visibility-badge {
@@ -2589,6 +2608,23 @@ mark {
   display: flex;
   gap: 6px;
   justify-content: flex-end;
+}
+
+.canvas-row-actions .icon-btn {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+.row-icon-btn-danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.row-icon-btn-danger:hover {
+  background: #fee2e2;
 }
 
 @media (max-width: 768px) {

@@ -32,6 +32,8 @@ export const api = {
   updateCanvas: (id, data) => request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCanvas: (id) => request(`/canvases/${id}`, { method: 'DELETE' }),
   forkCanvas: (id) => request(`/canvases/${id}/fork`, { method: 'POST' }),
+  setCanvasVisibility: (id, isPublic) =>
+    request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_public: isPublic }) }),
 
   signup: (email, password, name) =>
     request('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
