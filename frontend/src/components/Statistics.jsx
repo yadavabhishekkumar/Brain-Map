@@ -62,6 +62,7 @@ export default function Statistics({ onBack }) {
           <div className="stats-card">
             <h2>📦 App usage</h2>
             <div className="stats-grid">
+              <Stat label="Users" value={stats.app.users} />
               <Stat label="Canvases" value={stats.app.canvases} />
               <Stat label="Topics (nodes)" value={stats.app.nodes} />
               <Stat label="Attachments" value={stats.app.attachments} />
@@ -84,7 +85,7 @@ export default function Statistics({ onBack }) {
           </div>
 
           <div className="stats-card">
-            <h2>🤖 AI token usage <span className="stats-sub">(last 30 days)</span></h2>
+            <h2>🤖 AI token usage <span className="stats-sub">(all users · last 30 days)</span></h2>
             {stats.aiUsage && stats.aiUsage.length > 0 ? (
               <table className="stats-table">
                 <thead>
