@@ -2336,6 +2336,22 @@ mark {
   padding-top: 8px;
 }
 
+.epaper-history-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: var(--danger);
+}
+
+.epaper-history-delete:hover {
+  background: #fee2e2;
+}
+
 /* Mobile: full-width, touch-friendly e-paper controls */
 @media (max-width: 768px) {
   .epaper-card .btn {
