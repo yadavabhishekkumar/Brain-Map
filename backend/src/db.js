@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS canvases (
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  is_public BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -96,6 +97,10 @@ async function initSchema() {
   // Migration for databases created before user accounts / ownership existed.
   await pool.query(
     `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id) ON DELETE CASCADE`
+  );
+  // Migration for owned-but-public canvases (public no longer requires dropping ownership).
+  await pool.query(
+    `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false`
   );
 }
 

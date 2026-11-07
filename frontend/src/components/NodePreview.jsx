@@ -3,7 +3,7 @@ import { api } from '../api';
 import { renderMarkdown } from '../markdown';
 import MicButton from './MicButton';
 
-function NodePreview({ node, left, top, onClose, onChanged }) {
+function NodePreview({ node, left, top, onClose, onChanged, readOnly }) {
   const content = (node.data && node.data.content) || '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -33,7 +33,7 @@ function NodePreview({ node, left, top, onClose, onChanged }) {
   return (
     <div className="node-preview-wrap" style={{ left, top }}>
       <div className="node-preview-actions">
-        {!editing && (
+        {!editing && !readOnly && (
           <button className="btn btn-sm node-preview-edit" onClick={startEdit} title="Edit" aria-label="Edit">
             ✏️
           </button>

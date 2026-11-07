@@ -4,7 +4,7 @@ const { uuid } = require('../util');
 const { indexNode } = require('../services/indexer');
 const es = require('../es');
 const storage = require('../storage');
-const { requireCanvasOwner } = require('../services/access');
+const { requireCanvasOwner, canManageCanvas } = require('../services/access');
 
 const router = express.Router();
 
@@ -14,14 +14,14 @@ router.get('/', async (req, res, next) => {
     const userId = req.user ? req.user.sub : null;
     const { rows } = await pool.query(
       `SELECT c.id, c.name, c.description, c.owner_id, u.name AS owner_name,
-              (c.owner_id IS NULL) AS is_public,
+              (c.owner_id IS NULL OR c.is_public) AS is_public,
               c.created_at, c.updated_at,
               (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count,
               (SELECT count(*)::int FROM attachments a WHERE a.canvas_id = c.id) AS attachment_count,
               (SELECT n.canvas_id FROM nodes n WHERE n.linked_canvas_id = c.id LIMIT 1) AS linked_from_canvas_id
        FROM canvases c
        LEFT JOIN users u ON u.id = c.owner_id
-       WHERE c.owner_id IS NULL OR c.owner_id = $1
+       WHERE c.owner_id IS NULL OR c.owner_id = $1 OR c.is_public
        ORDER BY c.updated_at DESC`,
       [userId]
     );
@@ -65,7 +65,9 @@ router.get('/:id', async (req, res, next) => {
     const { id } = req.params;
     const canvas = await pool.query('SELECT * FROM canvases WHERE id=$1', [id]);
     if (!canvas.rows[0]) return res.status(404).json({ error: 'Canvas not found' });
-    if (canvas.rows[0].owner_id && (!req.user || req.user.sub !== canvas.rows[0].owner_id)) {
+    const canvasRow = canvas.rows[0];
+    const isPublic = !canvasRow.owner_id || canvasRow.is_public;
+    if (!isPublic && (!req.user || req.user.sub !== canvasRow.owner_id)) {
       return res.status(403).json({ error: 'You do not have access to this canvas' });
     }
 
@@ -96,7 +98,12 @@ router.get('/:id', async (req, res, next) => {
     );
 
     res.json({
-      canvas: canvas.rows[0],
+      canvas: {
+        ...canvas.rows[0],
+        is_public: isPublic,
+        // The owner (or a super user, for public canvases) may edit.
+        can_edit: canManageCanvas(req.user, canvasRow),
+      },
       parentCanvases: parentCanvases.rows,
       nodes: nodes.rows,
       edges: edges.rows,
@@ -122,6 +129,12 @@ router.put('/:id', async (req, res, next) => {
     if (req.body.description !== undefined) {
       fields.push(`description=$${i++}`);
       values.push(req.body.description);
+    }
+    if (req.body.is_public !== undefined) {
+      fields.push(`is_public=$${i++}`);
+      values.push(
+        req.body.is_public === true || req.body.is_public === 'true' || req.body.is_public === 1
+      );
     }
     if (fields.length) {
       fields.push('updated_at=now()');
@@ -302,7 +315,7 @@ router.post('/:id/fork', async (req, res, next) => {
     const src = await pool.query('SELECT * FROM canvases WHERE id=$1', [id]);
     if (!src.rows[0]) return res.status(404).json({ error: 'Canvas not found' });
     const srcCanvas = src.rows[0];
-    if (srcCanvas.owner_id && srcCanvas.owner_id !== req.user.sub) {
+    if (srcCanvas.owner_id && srcCanvas.owner_id !== req.user.sub && !srcCanvas.is_public) {
       return res.status(403).json({ error: 'You can only fork public canvases' });
     }
 

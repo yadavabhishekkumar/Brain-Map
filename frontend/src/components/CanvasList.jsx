@@ -61,6 +61,20 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     }
   };
 
+  const togglePublic = async (canvas) => {
+    const next = !canvas.is_public;
+    const msg = next
+      ? 'Make this canvas public? Anyone can then view and fork it.'
+      : 'Make this canvas private? It will no longer be visible to others.';
+    if (!window.confirm(msg)) return;
+    try {
+      await api.setCanvasVisibility(canvas.id, next);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   // Visible canvases after the public/private filter.
   const visibleCanvases = useMemo(() => {
     if (filter === 'private') return canvases.filter((c) => !c.is_public);
@@ -120,17 +134,42 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
           <span className="canvas-row-size">{size}</span>
           <span className="canvas-row-date">{formatDate(canvas.updated_at)}</span>
           <div className="canvas-row-actions">
-            <button className="btn btn-sm" onClick={() => onOpen(canvas.id, canvas.name)}>
-              Open
+            <button
+              className="btn icon-btn row-icon-btn"
+              title="Open canvas"
+              aria-label={`Open ${canvas.name}`}
+              onClick={() => onOpen(canvas.id, canvas.name)}
+            >
+              ↗
             </button>
-            {canvas.is_public && user && (
-              <button className="btn btn-sm" onClick={() => fork(canvas.id)}>
-                🍴 Fork
+            {canvas.is_public && user && (!canvas.owner_id || canvas.owner_id !== user.id) && (
+              <button
+                className="btn icon-btn row-icon-btn"
+                title="Fork into my account"
+                aria-label="Fork canvas"
+                onClick={() => fork(canvas.id)}
+              >
+                🍴
               </button>
             )}
-            {!canvas.is_public && user && canvas.owner_id === user.id && (
-              <button className="btn btn-sm btn-danger" onClick={() => remove(canvas.id)}>
-                Delete
+            {user && canvas.owner_id === user.id && (
+              <button
+                className="btn icon-btn row-icon-btn"
+                title={canvas.is_public ? 'Make private' : 'Make public'}
+                aria-label={canvas.is_public ? 'Make private' : 'Make public'}
+                onClick={() => togglePublic(canvas)}
+              >
+                {canvas.is_public ? '🔒' : '🌐'}
+              </button>
+            )}
+            {user && (canvas.owner_id === user.id || (user.is_superuser && canvas.is_public)) && (
+              <button
+                className="btn icon-btn row-icon-btn row-icon-btn-danger"
+                title="Delete canvas"
+                aria-label="Delete canvas"
+                onClick={() => remove(canvas.id)}
+              >
+                🗑
               </button>
             )}
           </div>
@@ -155,6 +194,9 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
           {user ? (
             <>
               <span className="account-name">👤 {user.name || user.email}</span>
+              {user.is_superuser && (
+                <span className="super-badge" title="Super user — can delete any public canvas">👑</span>
+              )}
               <button className="btn btn-sm" onClick={onSignOut}>Sign out</button>
             </>
           ) : (

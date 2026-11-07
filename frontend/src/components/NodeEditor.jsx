@@ -8,7 +8,7 @@ import { getAiModel } from '../aiModel';
 const DEFAULT_REARRANGE_PROMPT =
   'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes and description, Connect them based on their relationship. If they are independent, then should exist parallel to each other. If they are somehow connected then connect them sequentially.';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, onDeleteNode, onMergeNode, width, onResize, tempNode }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, readOnly, onDeleteNode, onMergeNode, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -176,7 +176,11 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   };
 
   const remove = () => {
-    if (!window.confirm('Delete this node and its entire subtree?')) return;
+    const isLinked = node && node.linked_canvas_id;
+    const msg = isLinked
+      ? 'Remove this link? The linked canvas itself will NOT be deleted.'
+      : 'Delete this node and its entire subtree?';
+    if (!window.confirm(msg)) return;
     onDeleteNode(nodeId);
     onClose();
   };
@@ -383,12 +387,12 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
 
       <div className="panel-body">
         <label>Title</label>
-        <input value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input value={label} onChange={(e) => setLabel(e.target.value)} disabled={readOnly} />
 
         <label>Notes / content</label>
         <div className="voice-field">
-          <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} />
-          <MicButton onText={(t) => setContent((v) => (v ? v + ' ' + t : t))} />
+          <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} disabled={readOnly} />
+          {!readOnly && <MicButton onText={(t) => setContent((v) => (v ? v + ' ' + t : t))} />}
         </div>
 
         {node.linked_canvas_id && (
@@ -404,7 +408,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
         )}
 
         <label>Parent topic</label>
-        <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+        <select value={parentId} onChange={(e) => setParentId(e.target.value)} disabled={readOnly}>
           <option value="">— root —</option>
           {nodes
             .filter((n) => n.id !== nodeId)
@@ -415,41 +419,45 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
             ))}
         </select>
 
-        <div className="panel-actions">
-          <button className="btn btn-primary" onClick={save} disabled={saving || editMode}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>
-            {exporting ? 'Exporting…' : '📤 Export to new canvas'}
-          </button>
-          {editMode && node.parent_id && (
-            !mergeChoiceOpen ? (
-              <button className="btn" onClick={() => setMergeChoiceOpen(true)}>
-                🧲 Merge into parent
-              </button>
-            ) : (
-              <div className="merge-choice">
-                <span className="muted">Merge into parent — keep this node's info?</span>
-                <div className="merge-choice-actions">
-                  <button className="btn btn-sm" onClick={() => mergeIntoParent('drop')}>🗑 Drop info</button>
-                  <button className="btn btn-sm btn-primary" onClick={() => mergeIntoParent('append')}>📎 Append to parent</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setMergeChoiceOpen(false)}>✕</button>
-                </div>
-              </div>
-            )
-          )}
-          {editMode && (
-            <button className="btn btn-danger" onClick={remove}>
-              Delete
+        {!readOnly && (
+          <div className="panel-actions">
+            <button className="btn btn-primary" onClick={save} disabled={saving || editMode}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
-          )}
-        </div>
+            <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>
+              {exporting ? 'Exporting…' : '📤 Export to new canvas'}
+            </button>
+            {editMode && node.parent_id && (
+              !mergeChoiceOpen ? (
+                <button className="btn" onClick={() => setMergeChoiceOpen(true)}>
+                  🧲 Merge into parent
+                </button>
+              ) : (
+                <div className="merge-choice">
+                  <span className="muted">Merge into parent — keep this node's info?</span>
+                  <div className="merge-choice-actions">
+                    <button className="btn btn-sm" onClick={() => mergeIntoParent('drop')}>🗑 Drop info</button>
+                    <button className="btn btn-sm btn-primary" onClick={() => mergeIntoParent('append')}>📎 Append to parent</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setMergeChoiceOpen(false)}>✕</button>
+                  </div>
+                </div>
+              )
+            )}
+            {editMode && (
+              <button className="btn btn-danger" onClick={remove}>
+                {node.linked_canvas_id ? 'Remove link' : 'Delete'}
+              </button>
+            )}
+          </div>
+        )}
 
         <h4>📎 Notes &amp; screenshots</h4>
-        <label className="upload-btn">
-          <input type="file" accept="image/*" hidden onChange={onUpload} />
-          {uploading ? 'Uploading…' : '＋ Attach screenshot'}
-        </label>
+        {!readOnly && (
+          <label className="upload-btn">
+            <input type="file" accept="image/*" hidden onChange={onUpload} />
+            {uploading ? 'Uploading…' : '＋ Attach screenshot'}
+          </label>
+        )}
 
         <div className="attachments">
           {attachmentsLoading && <div className="muted">Loading attachments…</div>}
@@ -467,21 +475,23 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
                   {a.original_filename}
                 </div>
                 <div className="attachment-status">{a.status}</div>
-                <div className="attachment-actions">
-                  <button
-                    className="btn btn-sm"
-                    disabled={extractingId === a.id}
-                    onClick={() => extract(a.id, 'auto')}
-                  >
-                    {extractingId === a.id ? 'Extracting…' : '✨ Extract text'}
-                  </button>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => removeAttachment(a.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="attachment-actions">
+                    <button
+                      className="btn btn-sm"
+                      disabled={extractingId === a.id}
+                      onClick={() => extract(a.id, 'auto')}
+                    >
+                      {extractingId === a.id ? 'Extracting…' : '✨ Extract text'}
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => removeAttachment(a.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -513,10 +523,12 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           </div>
         )}
 
-        <h4>
-          🤖 Ask AI about this topic <AiModelBadge />
-        </h4>
-        <div className="ai-ask">
+        {!readOnly && (
+          <>
+            <h4>
+              🤖 Ask AI about this topic <AiModelBadge />
+            </h4>
+            <div className="ai-ask">
           <div className="ai-context">
             <div className="ai-context-label">
               <span>Study context (editable)</span>
@@ -637,6 +649,8 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           </div>
         ) : (
           <div className="muted">This topic has no child nodes.</div>
+        )}
+          </>
         )}
       </div>
     </aside>
