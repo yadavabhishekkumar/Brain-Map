@@ -497,6 +497,7 @@ router.post('/analyze', upload.single('file'), async (req, res, next) => {
       model: modelName,
       effort: effortLevel,
       maxTokens: 20000,
+      userId: req.user && req.user.sub,
     });
 
     res.json({

@@ -37,6 +37,7 @@ async function main() {
   app.use('/api/search', require('./routes/search'));
   app.use('/api/ai', require('./routes/ai'));
   app.use('/api/epaper', require('./routes/epaper'));
+  app.use('/api/stats', require('./routes/stats'));
 
   // --- Serve the built frontend (single-service production deployment) ---
   // During a Render deploy the Vite frontend is built into frontend/dist, and
