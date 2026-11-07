@@ -533,7 +533,7 @@ function sectionsToFlat(sections) {
 // Import plain/markdown text into a new (or existing) canvas as a tree of nodes.
 router.post('/import-text', async (req, res, next) => {
   try {
-    const { text, canvas_name, node_id } = req.body || {};
+    const { text, canvas_name, node_id, mode } = req.body || {};
     if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
     if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     if (node_id) {
@@ -575,6 +575,12 @@ router.post('/import-text', async (req, res, next) => {
       attachX = 0;
       attachY = 0;
       attachDepth = 0;
+    }
+
+    // Single-node export: keep just the root node (full text as its description),
+    // instead of parsing the text into a tree of child nodes.
+    if (mode === 'node' && !node_id) {
+      return res.json({ canvas_id: canvasId, created_count: 1 });
     }
 
     const sections = splitIntoSections(text);
