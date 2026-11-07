@@ -3,13 +3,43 @@ import { api } from '../api';
 import MicButton from './MicButton';
 import { AI_MODELS, getAiModel, setAiModel } from '../aiModel';
 
-export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut }) {
+export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onProfileUpdated }) {
   const [canvases, setCanvases] = useState([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiModel, setAiModelState] = useState(getAiModel());
   const [filter, setFilter] = useState('all'); // 'all' | 'private'
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [editMsg, setEditMsg] = useState('');
+
+  const openEdit = () => {
+    setEditName(user ? user.name || '' : '');
+    setEditMsg('');
+    setEditOpen(true);
+  };
+
+  const saveProfile = async () => {
+    const n = editName.trim();
+    if (!n) {
+      setEditMsg('Name is required.');
+      return;
+    }
+    setSavingProfile(true);
+    setEditMsg('');
+    try {
+      const r = await api.updateProfile(n);
+      onProfileUpdated(r.user);
+      setEditOpen(false);
+    } catch (e) {
+      setEditMsg(e.message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -192,17 +222,49 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
         </div>
         <div className="account-bar-actions">
           {user ? (
-            <>
-              <span className="account-name">👤 {user.name || user.email}</span>
-              {user.is_superuser && (
-                <span className="super-badge" title="Super user — can delete any public canvas">👑</span>
+            <div className="profile-menu">
+              <button className="account-chip" onClick={() => setMenuOpen((v) => !v)}>
+                <span className="account-name">👤 {user.name || user.email}</span>
+                {user.is_superuser && (
+                  <span className="super-badge" title="Super user — can delete any public canvas">👑</span>
+                )}
+                <span className="profile-caret">▾</span>
+              </button>
+              {menuOpen && (
+                <div className="profile-dropdown">
+                  <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); onOpenStats(); }}>
+                    📊 Statistics
+                  </button>
+                  <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
+                    ✏️ Edit Profile
+                  </button>
+                  <button className="profile-dropdown-item profile-dropdown-danger" onClick={() => { setMenuOpen(false); onSignOut(); }}>
+                    Sign out
+                  </button>
+                </div>
               )}
-              <button className="btn btn-sm" onClick={onSignOut}>Sign out</button>
-            </>
+            </div>
           ) : (
             <button className="btn btn-sm btn-primary" onClick={onSignIn}>Sign in / Sign up</button>
           )}
         </div>
+
+        {editOpen && (
+          <div className="profile-modal-overlay" onClick={() => setEditOpen(false)}>
+            <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>✏️ Edit Profile</h3>
+              <label>Display name (username)</label>
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+              <div className="profile-modal-actions">
+                <button className="btn btn-sm" onClick={() => setEditOpen(false)}>Cancel</button>
+                <button className="btn btn-sm btn-primary" onClick={saveProfile} disabled={savingProfile}>
+                  {savingProfile ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              {editMsg && <div className="epaper-error">{editMsg}</div>}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="hero">

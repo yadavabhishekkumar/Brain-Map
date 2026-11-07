@@ -43,6 +43,10 @@ export const api = {
     request('/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
   me: () => request('/auth/me'),
 
+  updateProfile: (name) => request('/auth/me', { method: 'PUT', body: JSON.stringify({ name }) }),
+
+  getStats: () => request('/stats'),
+
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteNode: (id) => request(`/nodes/${id}`, { method: 'DELETE' }),

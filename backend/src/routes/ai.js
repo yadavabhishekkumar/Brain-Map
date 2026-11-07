@@ -69,7 +69,7 @@ router.post('/ask', async (req, res, next) => {
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2 });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2, userId: req.user && req.user.sub });
 
     const chatId = uuid();
     await pool.query(
@@ -108,7 +108,7 @@ router.post('/respond', async (req, res, next) => {
       },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2 });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2, userId: req.user && req.user.sub });
 
     let chatId = null;
     if (canvas_id) {
@@ -174,7 +174,7 @@ const DEFAULT_REARRANGE_PROMPT =
   'parallel to each other. If they are somehow connected then connect them sequentially.';
 
 // Use the AI itself to turn an answer into a structured map tree.
-async function generateMapTree(text, provider) {
+async function generateMapTree(text, provider, userId) {
   const messages = [
     { role: 'system', content: MAP_FROM_ANSWER_SYSTEM },
     { role: 'user', content: `Answer text:\n\n${String(text || '').trim()}` },
@@ -184,14 +184,15 @@ async function generateMapTree(text, provider) {
     maxTokens: 12000,
     temperature: 0.2,
     json: true,
+    userId,
   });
   return parseTree(content);
 }
 
 // Flatten an answer into nodes, falling back to the heuristic parser if AI fails.
-async function buildFlatFromAnswer(text, provider) {
+async function buildFlatFromAnswer(text, provider, userId) {
   try {
-    const tree = await generateMapTree(text, provider);
+    const tree = await generateMapTree(text, provider, userId);
     return flatten(tree);
   } catch (e) {
     console.warn('[ai/apply] AI map generation failed, falling back to text parser:', e.message);
@@ -247,6 +248,7 @@ router.post('/build', async (req, res, next) => {
       maxTokens: 12000,
       temperature: 0.2,
       json: true,
+      userId: req.user && req.user.sub,
     });
 
     let tree;
@@ -377,7 +379,7 @@ router.post('/apply', async (req, res, next) => {
     }
 
     if (action === 'map') {
-      const flat = await buildFlatFromAnswer(text, model);
+      const flat = await buildFlatFromAnswer(text, model, req.user && req.user.sub);
       if (!flat.length) {
         return res.status(400).json({ error: 'Could not generate a map from this answer.' });
       }
@@ -409,7 +411,7 @@ router.post('/apply', async (req, res, next) => {
     }
 
     if (action === 'canvas') {
-      const flat = await buildFlatFromAnswer(text, model);
+      const flat = await buildFlatFromAnswer(text, model, req.user && req.user.sub);
       if (!flat.length) {
         return res.status(400).json({ error: 'Could not generate a map from this answer.' });
       }
@@ -670,6 +672,7 @@ router.post('/rearrange', async (req, res, next) => {
       provider: model,
       maxTokens: 8000,
       json: true,
+      userId: req.user && req.user.sub,
     });
 
     const tree = parseTree(content);

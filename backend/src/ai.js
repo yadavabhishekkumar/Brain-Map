@@ -1,5 +1,7 @@
 const axios = require('axios');
 const config = require('./config');
+const { pool } = require('./db');
+const { uuid } = require('./util');
 
 const VISION_PROMPT =
   'You are an OCR and note-extraction assistant for UPSC exam preparation. ' +
@@ -104,6 +106,21 @@ function resolveChatProvider(provider) {
   }
 }
 
+// Record per-user AI token usage (fire-and-forget; never blocks a response).
+function recordUsage(userId, provider, model, promptTokens, completionTokens, totalTokens) {
+  if (!userId) return;
+  try {
+    pool
+      .query(
+        'INSERT INTO ai_usage (id, user_id, provider, model, prompt_tokens, completion_tokens, total_tokens) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [uuid(), userId, provider, model, promptTokens || 0, completionTokens || 0, totalTokens || 0]
+      )
+      .catch(() => {});
+  } catch (e) {
+    // ignore
+  }
+}
+
 async function chatCompletion(messages, options = {}) {
   const provider = resolveChatProvider(options.provider);
   if (!provider.key) {
@@ -138,6 +155,16 @@ async function chatCompletion(messages, options = {}) {
       resp.data && resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message
         ? resp.data.choices[0].message.content
         : '';
+    if (options.userId && resp.data && resp.data.usage) {
+      recordUsage(
+        options.userId,
+        provider.name,
+        model,
+        resp.data.usage.prompt_tokens,
+        resp.data.usage.completion_tokens,
+        resp.data.usage.total_tokens
+      );
+    }
     return { content: String(content || '').trim(), raw: resp.data };
   } catch (e) {
     if (e.response && e.response.data) {

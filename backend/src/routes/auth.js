@@ -107,4 +107,21 @@ router.get('/me', authRequired, async (req, res, next) => {
   }
 });
 
+// PUT /api/auth/me  { name } -> update the display name (username)
+router.put('/me', authRequired, async (req, res, next) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    if (name.length > 60) return res.status(400).json({ error: 'Name is too long (max 60 characters)' });
+    const { rows } = await pool.query('UPDATE users SET name=$1 WHERE id=$2 RETURNING *', [
+      name,
+      req.user.sub,
+    ]);
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: publicUser(rows[0]) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
