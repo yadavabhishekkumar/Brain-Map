@@ -3,15 +3,23 @@ const axios = require('axios');
 const { pool } = require('../db');
 const config = require('../config');
 const { authRequired } = require('../services/auth');
+const { isSuperUser } = require('../services/access');
 
 const router = express.Router();
 router.use(authRequired);
+router.use((req, res, next) => {
+  if (!isSuperUser(req.user)) {
+    return res.status(403).json({ error: 'Statistics are available to super users only' });
+  }
+  next();
+});
 
 // GET /api/stats  -> app/database usage + AI token usage + DeepSeek balance
 router.get('/', async (req, res, next) => {
   try {
     // --- App / database usage (row counts + on-disk DB size) ---
-    const [canvases, nodes, attachments, edges] = await Promise.all([
+    const [users, canvases, nodes, attachments, edges] = await Promise.all([
+      pool.query('SELECT count(*)::int AS c FROM users'),
       pool.query('SELECT count(*)::int AS c FROM canvases'),
       pool.query('SELECT count(*)::int AS c FROM nodes'),
       pool.query('SELECT count(*)::int AS c FROM attachments'),
@@ -34,10 +42,9 @@ router.get('/', async (req, res, next) => {
               SUM(total_tokens)::int AS total_tokens,
               count(*)::int AS calls
        FROM ai_usage
-       WHERE user_id = $1 AND created_at > now() - interval '30 days'
+       WHERE created_at > now() - interval '30 days'
        GROUP BY provider, model
-       ORDER BY provider, model`,
-      [req.user.sub]
+       ORDER BY provider, model`
     );
 
     // --- DeepSeek balance (best-effort; the only provider with a balance API) ---
@@ -61,6 +68,7 @@ router.get('/', async (req, res, next) => {
 
     res.json({
       app: {
+        users: users.rows[0].c,
         canvases: canvases.rows[0].c,
         nodes: nodes.rows[0].c,
         attachments: attachments.rows[0].c,

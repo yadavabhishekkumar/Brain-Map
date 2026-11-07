@@ -107,6 +107,15 @@ export default function App() {
   }
 
   if (view.type === 'stats') {
+    if (!user || !user.is_superuser) {
+      return (
+        <div className="stats-page">
+          <button className="btn" onClick={() => navigate({ type: 'list' })}>← Back</button>
+          <h1>📊 Statistics</h1>
+          <p className="stats-gap">⚠ Statistics are available to super users only.</p>
+        </div>
+      );
+    }
     return <Statistics onBack={() => navigate({ type: 'list' })} />;
   }
 

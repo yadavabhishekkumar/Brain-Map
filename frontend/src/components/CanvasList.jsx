@@ -232,9 +232,11 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
               </button>
               {menuOpen && (
                 <div className="profile-dropdown">
-                  <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); onOpenStats(); }}>
-                    📊 Statistics
-                  </button>
+                  {user.is_superuser && (
+                    <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); onOpenStats(); }}>
+                      📊 Statistics
+                    </button>
+                  )}
                   <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
                     ✏️ Edit Profile
                   </button>
