@@ -2270,6 +2270,72 @@ mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.epaper-prompt-save {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.epaper-prompt-save-msg {
+  font-size: 12px;
+  color: #047857;
+}
+
+.epaper-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.epaper-history {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.epaper-history h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.epaper-history-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.epaper-history-item summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+
+.epaper-history-prompt {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.epaper-history-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.epaper-history-body {
+  margin-top: 8px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+
 /* Mobile: full-width, touch-friendly e-paper controls */
 @media (max-width: 768px) {
   .epaper-card .btn {

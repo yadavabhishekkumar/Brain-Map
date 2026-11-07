@@ -1,6 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, downloadEpaperFile } from '../api';
 
+const DEFAULT_PROMPT =
+  'Summarize the key points of this e-paper relevant to the UPSC syllabus, and list important facts, data, and potential exam questions.';
+const PROMPT_KEY = 'epaper_prompt';
+const HISTORY_KEY = 'epaper_analysis_history';
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveHistory(list) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+  } catch (e) {
+    // ignore
+  }
+}
+
 export default function Epaper({ onBack, onOpenCanvas }) {
   const [date, setDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -13,14 +35,20 @@ export default function Epaper({ onBack, onOpenCanvas }) {
   const [lastDownload, setLastDownload] = useState(null);
   const [pickedFile, setPickedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [prompt, setPrompt] = useState(
-    'Summarize the key points of this e-paper relevant to the UPSC syllabus, and list important facts, data, and potential exam questions.'
-  );
+  const [prompt, setPrompt] = useState(() => {
+    try {
+      return localStorage.getItem(PROMPT_KEY) || DEFAULT_PROMPT;
+    } catch (e) {
+      return DEFAULT_PROMPT;
+    }
+  });
+  const [promptMsg, setPromptMsg] = useState('');
   const [model, setModel] = useState('deepseek-v4-pro');
   const [effort, setEffort] = useState('high');
   const [analyzeBusy, setAnalyzeBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
+  const [history, setHistory] = useState(loadHistory);
   const fileInputRef = useRef(null);
   const cookieInputRef = useRef(null);
   const [exporting, setExporting] = useState(false);
@@ -187,12 +215,36 @@ export default function Epaper({ onBack, onOpenCanvas }) {
       fd.append('prompt', prompt.trim());
       fd.append('model', model);
       fd.append('effort', effort);
-      setAnalysis(await api.analyzeEpaper(fd));
+      const r = await api.analyzeEpaper(fd);
+      setAnalysis(r);
+      const entry = {
+        id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+        prompt: prompt.trim(),
+        model,
+        effort,
+        filename: pickedFile ? pickedFile.name : lastDownload ? lastDownload.filename : '',
+        analysis: r.analysis,
+        extractedLength: r.extractedLength,
+        at: new Date().toISOString(),
+      };
+      const next = [entry, ...history].slice(0, 50);
+      setHistory(next);
+      saveHistory(next);
     } catch (e) {
       setAnalyzeError(e.message);
     } finally {
       setAnalyzeBusy(false);
     }
+  };
+
+  const savePrompt = () => {
+    try {
+      localStorage.setItem(PROMPT_KEY, prompt);
+    } catch (e) {
+      // ignore
+    }
+    setPromptMsg('Prompt saved ✓');
+    setTimeout(() => setPromptMsg(''), 2000);
   };
 
   const exportToCanvas = async () => {
@@ -203,6 +255,22 @@ export default function Epaper({ onBack, onOpenCanvas }) {
       const name = `E-Paper Analysis${date ? ' - ' + date : ''}`;
       const r = await api.importTextToCanvas(analysis.analysis, name);
       setExportMsg(`Exported ${r.created_count} topics to a new canvas.`);
+      onOpenCanvas(r.canvas_id, name);
+    } catch (e) {
+      setAnalyzeError(e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportToNode = async () => {
+    if (!analysis || !analysis.analysis) return;
+    setExporting(true);
+    setExportMsg('');
+    try {
+      const name = `E-Paper Analysis${date ? ' - ' + date : ''}`;
+      const r = await api.importTextToCanvas(analysis.analysis, name, 'node');
+      setExportMsg('Exported to a single node (full text in its description).');
       onOpenCanvas(r.canvas_id, name);
     } catch (e) {
       setAnalyzeError(e.message);
@@ -391,6 +459,12 @@ export default function Epaper({ onBack, onOpenCanvas }) {
 
         <label>Prompt</label>
         <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <div className="epaper-prompt-save">
+          <button className="btn btn-sm" onClick={savePrompt} type="button">
+            💾 Save prompt
+          </button>
+          {promptMsg && <span className="epaper-prompt-save-msg">{promptMsg}</span>}
+        </div>
 
         <div className="epaper-analyze-controls">
           <div className="epaper-control">
@@ -423,10 +497,33 @@ export default function Epaper({ onBack, onOpenCanvas }) {
               {analysis.truncated ? ' (truncated for context)' : ''}
             </div>
             <div className="epaper-analysis-body">{analysis.analysis}</div>
-            <button className="btn" onClick={exportToCanvas} disabled={exporting}>
-              {exporting ? 'Exporting…' : '📤 Export to canvas'}
-            </button>
+            <div className="epaper-export-actions">
+              <button className="btn" onClick={exportToCanvas} disabled={exporting}>
+                {exporting ? 'Exporting…' : '📤 Export to canvas'}
+              </button>
+              <button className="btn" onClick={exportToNode} disabled={exporting}>
+                {exporting ? 'Exporting…' : '📝 Export to a node'}
+              </button>
+            </div>
             {exportMsg && <div className="epaper-login-msg">{exportMsg}</div>}
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="epaper-history">
+            <h3>📚 Past analyses</h3>
+            {history.map((h) => (
+              <details key={h.id} className="epaper-history-item">
+                <summary>
+                  <span className="epaper-history-prompt">{h.prompt}</span>
+                  <span className="epaper-history-meta">
+                    {new Date(h.at).toLocaleString()}
+                    {h.model ? ` · ${h.model}` : ''}
+                  </span>
+                </summary>
+                <div className="epaper-history-body">{h.analysis}</div>
+              </details>
+            ))}
           </div>
         )}
       </div>

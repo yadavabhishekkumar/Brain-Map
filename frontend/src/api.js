@@ -110,8 +110,8 @@ export const api = {
 
   analyzeEpaper: (formData) => request('/epaper/analyze', { method: 'POST', body: formData }),
 
-  importTextToCanvas: (text, canvasName) =>
-    request('/ai/import-text', { method: 'POST', body: JSON.stringify({ text, canvas_name: canvasName }) }),
+  importTextToCanvas: (text, canvasName, mode) =>
+    request('/ai/import-text', { method: 'POST', body: JSON.stringify({ text, canvas_name: canvasName, mode }) }),
 };
 
 export const fileUrl = (id) => `${API_BASE}/attachments/${id}/file`;
