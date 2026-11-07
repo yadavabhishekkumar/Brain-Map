@@ -3,7 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { chromium } = require('playwright-core');
+const { chromium } = require('playwright');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const ai = require('../ai');
@@ -18,8 +18,125 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   Referer: 'https://epaper.thehindu.com/',
 };
-const CHROME = process.env.EPAPER_CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+// Resolve a usable Chrome/Chromium executable across platforms. The interactive
+// "Login / refresh session" flow launches a *visible* browser on the machine that
+// runs the backend, so it only works when the app is hosted on a desktop with Chrome.
+const CHROME_CANDIDATES = [
+  // Windows
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  // Linux
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  // macOS
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+];
+
+function findChrome() {
+  if (process.env.EPAPER_CHROME_PATH) return process.env.EPAPER_CHROME_PATH;
+  // Playwright-managed Chromium (installed via `npx playwright install chromium`).
+  try {
+    const bundled = chromium.executablePath();
+    if (bundled && fs.existsSync(bundled)) return bundled;
+  } catch (e) {}
+  return (
+    CHROME_CANDIDATES.find((p) => {
+      try {
+        return fs.existsSync(p);
+      } catch (e) {
+        return false;
+      }
+    }) || null
+  );
+}
+
+const CHROME = findChrome();
 const PROFILE_DIR = process.env.EPAPER_PROFILE_DIR || path.join(__dirname, '..', '..', '.epaper-profile');
+
+const NO_CHROME_HINT =
+  'The e-paper downloader needs Google Chrome installed on the machine that runs the backend. ' +
+  'This server has no Chrome, so this feature cannot run here. To use it, run the app locally on ' +
+  'your own computer (where Chrome is installed), or set EPAPER_CHROME_PATH to a Chrome/Chromium ' +
+  'executable on the server.';
+
+// --- Saved session cookies (for headless/cloud login) ---
+const COOKIES_FILE = process.env.EPAPER_COOKIES_FILE || path.join(PROFILE_DIR, 'cookies.json');
+
+function loadCookies() {
+  try {
+    if (fs.existsSync(COOKIES_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+      return Array.isArray(parsed) ? parsed : [];
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveCookies(cookies) {
+  fs.mkdirSync(path.dirname(COOKIES_FILE), { recursive: true });
+  fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2));
+}
+
+function mapSameSite(v) {
+  const s = String(v || '').toLowerCase();
+  if (s === 'no_restriction' || s === 'none') return 'None';
+  if (s === 'strict') return 'Strict';
+  return 'Lax';
+}
+
+function isHinduDomain(d) {
+  const s = String(d || '').toLowerCase();
+  return s.endsWith('thehindu.com') || s.endsWith('thehindu.in');
+}
+
+// Parse a pasted cookie blob into Playwright cookie objects. Accepts either a JSON
+// array (e.g. an "EditThisCookie" export) or a "Cookie: name=value; name2=value2" string.
+function parseCookies(input) {
+  const text = (input || '').trim();
+  if (!text) return [];
+
+  if (text.startsWith('[')) {
+    try {
+      const arr = JSON.parse(text);
+      return arr
+        .filter((c) => c && c.name && isHinduDomain(c.domain))
+        .map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain,
+          path: c.path || '/',
+          expires: c.expirationDate
+            ? Math.round(Number(c.expirationDate))
+            : c.expires
+              ? Math.round(new Date(c.expires).getTime() / 1000)
+              : -1,
+          httpOnly: !!c.httpOnly,
+          secure: !!c.secure,
+          sameSite: mapSameSite(c.sameSite),
+        }));
+    } catch (e) {
+      // fall through to header parsing
+    }
+  }
+
+  let t = text.replace(/^Cookie\s*:/i, '');
+  const cookies = [];
+  for (const part of t.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const name = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (name && value) {
+      cookies.push({ name, value, domain: '.thehindu.com', path: '/', expires: -1, httpOnly: false, secure: true, sameSite: 'Lax' });
+    }
+  }
+  return cookies;
+}
 
 let loginBrowser = null;
 
@@ -54,6 +171,7 @@ async function extractPdfText(buffer) {
 }
 
 async function downloadPdf(issue, folder) {
+  if (!CHROME) throw new Error(NO_CHROME_HINT);
   await ensureLoginClosed();
   const url = `${BASE}/issues/${issue.id}/pagespdffull?download=true`;
   const dateStr = (issue.publishedDate || '').slice(0, 10);
@@ -69,6 +187,14 @@ async function downloadPdf(issue, folder) {
     ignoreDefaultArgs: ['--enable-automation'],
   });
   try {
+    const cookies = loadCookies();
+    if (cookies.length) {
+      try {
+        await context.addCookies(cookies);
+      } catch (e) {
+        console.warn('[epaper] could not apply saved cookies:', e.message);
+      }
+    }
     const page = context.pages()[0] || await context.newPage();
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -130,14 +256,26 @@ router.get('/resolve', async (req, res, next) => {
 // Open a browser window so the user can log in once (session is reused afterwards)
 router.post('/login', async (req, res, next) => {
   try {
+    if (!CHROME) {
+      return res.status(400).json({ error: NO_CHROME_HINT });
+    }
     await ensureLoginClosed();
-    loginBrowser = await chromium.launchPersistentContext(PROFILE_DIR, {
-      executablePath: CHROME,
-      headless: false,
-      acceptDownloads: true,
-      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-      ignoreDefaultArgs: ['--enable-automation'],
-    });
+    try {
+      loginBrowser = await chromium.launchPersistentContext(PROFILE_DIR, {
+        executablePath: CHROME,
+        headless: false,
+        acceptDownloads: true,
+        args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+        ignoreDefaultArgs: ['--enable-automation'],
+      });
+    } catch (launchErr) {
+      return res.status(400).json({
+        error:
+          'Could not open a browser window on the server: ' +
+          launchErr.message +
+          ' — this login step needs a desktop with Chrome and cannot run on a headless/cloud server.',
+      });
+    }
     const page = loginBrowser.pages()[0] || await loginBrowser.newPage();
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -152,9 +290,41 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// --- Session cookie management (headless/cloud login) ---
+router.post('/cookies', async (req, res, next) => {
+  try {
+    const { cookies } = req.body || {};
+    const parsed = parseCookies(cookies);
+    if (!parsed.length) {
+      return res.status(400).json({
+        error: 'No cookies found. Paste either a JSON cookie array or a "name=value; name2=value2" header string.',
+      });
+    }
+    saveCookies(parsed);
+    res.json({ ok: true, count: parsed.length, names: parsed.map((c) => c.name) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Report whether a session has been saved (never returns secret values).
+router.get('/cookies', (req, res) => {
+  const cookies = loadCookies();
+  res.json({ ok: true, count: cookies.length, names: cookies.map((c) => c.name) });
+});
+
+// Clear the saved session.
+router.delete('/cookies', (req, res) => {
+  try {
+    if (fs.existsSync(COOKIES_FILE)) fs.unlinkSync(COOKIES_FILE);
+  } catch (e) {}
+  res.json({ ok: true });
+});
+
 // Download e-paper(s) for a single date or a range
 router.post('/download', async (req, res, next) => {
   try {
+    if (!CHROME) return res.status(400).json({ error: NO_CHROME_HINT });
     const { date, fromDate, toDate, folder } = req.body || {};
     const targetFolder = (folder || '').trim() || path.join(os.homedir(), 'HinduEpaper');
 

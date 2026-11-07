@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 
 export default function Epaper({ onBack, onOpenCanvas }) {
@@ -24,6 +24,10 @@ export default function Epaper({ onBack, onOpenCanvas }) {
   const fileInputRef = useRef(null);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
+  const [cookieText, setCookieText] = useState('');
+  const [cookieBusy, setCookieBusy] = useState(false);
+  const [cookieMsg, setCookieMsg] = useState('');
+  const [savedCookieNames, setSavedCookieNames] = useState([]);
 
   const download = async () => {
     if (!date) {
@@ -65,6 +69,52 @@ export default function Epaper({ onBack, onOpenCanvas }) {
       setError(e.message);
     } finally {
       setLoggingIn(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    api
+      .epaperGetCookies()
+      .then((r) => {
+        if (active && r && r.names) setSavedCookieNames(r.names);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const saveCookies = async () => {
+    if (!cookieText.trim()) {
+      setCookieMsg('Paste your cookies first.');
+      return;
+    }
+    setCookieBusy(true);
+    setCookieMsg('');
+    try {
+      const r = await api.epaperSaveCookies(cookieText);
+      setSavedCookieNames(r.names || []);
+      setCookieMsg(`Saved ${r.count} cookie(s).`);
+      setCookieText('');
+    } catch (e) {
+      setCookieMsg(e.message);
+    } finally {
+      setCookieBusy(false);
+    }
+  };
+
+  const clearCookies = async () => {
+    setCookieBusy(true);
+    setCookieMsg('');
+    try {
+      await api.epaperClearCookies();
+      setSavedCookieNames([]);
+      setCookieMsg('Session cleared.');
+    } catch (e) {
+      setCookieMsg(e.message);
+    } finally {
+      setCookieBusy(false);
     }
   };
 
@@ -156,6 +206,33 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           {loggingIn ? 'Opening browser…' : '🔑 Login / refresh session'}
         </button>
         {loginMsg && <div className="epaper-login-msg">{loginMsg}</div>}
+
+        <div className="epaper-cookie-section">
+          <div className="epaper-cookie-title">🍪 Session cookie (for cloud / mobile)</div>
+          <p className="muted">
+            On a server without a desktop browser, paste your The Hindu session cookies instead of
+            logging in. In your desktop browser, log in at <code>epaper.thehindu.com</code>, open
+            DevTools → Network, copy the request's <code>Cookie</code> header, then paste it below.
+          </p>
+          <textarea
+            rows={3}
+            value={cookieText}
+            onChange={(e) => setCookieText(e.target.value)}
+            placeholder={'Cookie: name=value; name2=value2  (or a JSON cookie array)'}
+          />
+          <div className="epaper-cookie-actions">
+            <button className="btn" onClick={saveCookies} disabled={cookieBusy}>
+              {cookieBusy ? 'Saving…' : '💾 Save session'}
+            </button>
+            {savedCookieNames.length > 0 && (
+              <button className="btn" onClick={clearCookies} disabled={cookieBusy}>
+                Clear ({savedCookieNames.length})
+              </button>
+            )}
+          </div>
+          {cookieMsg && <div className="epaper-login-msg">{cookieMsg}</div>}
+        </div>
+
         <button className="btn btn-primary" onClick={download} disabled={busy || !date}>
           {busy ? 'Downloading…' : '⬇ Download PDF'}
         </button>

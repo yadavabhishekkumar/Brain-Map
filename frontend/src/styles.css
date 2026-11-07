@@ -2161,6 +2161,50 @@ mark {
   padding: 8px 10px;
 }
 
+.epaper-cookie-section {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.epaper-cookie-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.epaper-cookie-section textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.epaper-cookie-section textarea:focus {
+  border-color: var(--primary);
+}
+
+.epaper-cookie-section code {
+  background: #eef2f7;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.epaper-cookie-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.epaper-cookie-actions .btn {
+  margin-top: 0;
+}
+
 /* ---------- E-Paper analysis (step 2) ---------- */
 .epaper-section {
   margin-top: 24px;

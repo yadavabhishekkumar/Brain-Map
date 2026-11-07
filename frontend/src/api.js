@@ -102,6 +102,12 @@ export const api = {
 
   epaperLogin: () => request('/epaper/login', { method: 'POST', body: JSON.stringify({}) }),
 
+  epaperSaveCookies: (cookies) => request('/epaper/cookies', { method: 'POST', body: JSON.stringify({ cookies }) }),
+
+  epaperGetCookies: () => request('/epaper/cookies'),
+
+  epaperClearCookies: () => request('/epaper/cookies', { method: 'DELETE' }),
+
   analyzeEpaper: (formData) => request('/epaper/analyze', { method: 'POST', body: formData }),
 
   importTextToCanvas: (text, canvasName) =>
