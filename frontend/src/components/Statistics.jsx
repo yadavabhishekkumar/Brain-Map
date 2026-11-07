@@ -141,14 +141,22 @@ export default function Statistics({ onBack }) {
             ) : (
               <p className="stats-gap">⚠ No DeepSeek API key configured.</p>
             )}
+            <div className="stats-links">
+              <a href="https://platform.deepseek.com/usage" target="_blank" rel="noreferrer">DeepSeek usage dashboard ↗</a>
+            </div>
           </div>
 
           <div className="stats-card">
-            <h2>🔮 Gemini limits</h2>
+            <h2>🔮 Gemini usage &amp; limits</h2>
             <p className="stats-gap">
               ⚠️ Gemini doesn't expose usage/limits via a simple API. Its token usage is still
-              tracked above (provider "gemini"); for hard limits, check Google AI Studio / Cloud.
+              tracked above (provider "gemini"). For your account's usage and rate limits, open:
             </p>
+            <div className="stats-links">
+              <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer">Google AI Studio ↗</a>
+              <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noreferrer">Cloud Console — APIs &amp; Services ↗</a>
+              <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer">Cloud Billing ↗</a>
+            </div>
           </div>
         </>
       )}

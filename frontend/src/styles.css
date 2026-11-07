@@ -2539,6 +2539,23 @@ mark {
   font-weight: 600;
 }
 
+.stats-links {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.stats-links a {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.stats-links a:hover {
+  text-decoration: underline;
+}
+
 /* Mobile: full-width, touch-friendly e-paper controls */
 @media (max-width: 768px) {
   .epaper-card .btn {
