@@ -2270,6 +2270,32 @@ mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Mobile: full-width, touch-friendly e-paper controls */
+@media (max-width: 768px) {
+  .epaper-card .btn {
+    width: 100%;
+    align-self: stretch;
+  }
+
+  .epaper-cookie-actions {
+    flex-direction: column;
+  }
+
+  .epaper-cookie-actions .btn {
+    width: 100%;
+  }
+
+  .epaper-card input,
+  .epaper-card textarea,
+  .epaper-section textarea {
+    font-size: 16px; /* keep iOS from auto-zooming on focus */
+  }
+
+  .epaper-cookie-section {
+    padding: 12px;
+  }
+}
+
 /* ---------- E-Paper analysis (step 2) ---------- */
 .epaper-section {
   margin-top: 24px;

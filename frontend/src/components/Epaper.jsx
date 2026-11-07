@@ -22,6 +22,7 @@ export default function Epaper({ onBack, onOpenCanvas }) {
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
   const fileInputRef = useRef(null);
+  const cookieInputRef = useRef(null);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [cookieText, setCookieText] = useState('');
@@ -121,6 +122,25 @@ export default function Epaper({ onBack, onOpenCanvas }) {
     } finally {
       setCookieBusy(false);
     }
+  };
+
+  const pasteFromClipboard = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          setCookieText(text.trim());
+          setCookieMsg('Pasted! Tap 💾 Save session.');
+          setCookieError('');
+          return;
+        }
+      }
+    } catch (e) {
+      // Clipboard read may be blocked; fall through to manual focus.
+    }
+    if (cookieInputRef.current) cookieInputRef.current.focus();
+    setCookieMsg('Now long-press in the box and choose Paste.');
+    setCookieError('');
   };
 
   const downloadFile = async (d) => {
@@ -228,7 +248,8 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           <div className="epaper-cookie-title">🍪 Session cookie (for cloud / mobile)</div>
           <p className="muted">
             If the app is hosted on a server (no desktop browser), paste your The Hindu session
-            cookies below instead of logging in. You only need to do this once per session.
+            cookies below instead of logging in. Get the cookies on your computer, send the text to
+            your phone, then tap <strong>📋 Paste</strong> — once per session.
           </p>
 
           <details className="epaper-cookie-help">
@@ -258,6 +279,7 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           </details>
 
           <textarea
+            ref={cookieInputRef}
             rows={4}
             value={cookieText}
             onChange={(e) => setCookieText(e.target.value)}
@@ -265,6 +287,9 @@ export default function Epaper({ onBack, onOpenCanvas }) {
           />
 
           <div className="epaper-cookie-actions">
+            <button className="btn" onClick={pasteFromClipboard} disabled={cookieBusy}>
+              📋 Paste
+            </button>
             <button className="btn" onClick={saveCookies} disabled={cookieBusy}>
               {cookieBusy ? 'Saving…' : '💾 Save session'}
             </button>
