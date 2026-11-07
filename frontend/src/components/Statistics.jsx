@@ -78,6 +78,9 @@ export default function Statistics({ onBack }) {
               ⚠️ Neon doesn't expose RAM/memory usage without the Neon API, so only the on-disk
               database size is shown here.
             </p>
+            <div className="stats-links">
+              <a href="https://console.neon.tech/" target="_blank" rel="noreferrer">Neon console — storage &amp; compute usage ↗</a>
+            </div>
           </div>
 
           <div className="stats-card">
