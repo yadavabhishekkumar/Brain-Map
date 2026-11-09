@@ -384,26 +384,26 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                 </div>
               );
             })}
-            {user &&
-              (addingTab ? (
-                <div className="home-tab home-tab-add">
-                  <input
-                    className="home-tab-input"
-                    autoFocus
-                    value={newTabName}
-                    placeholder="Tab name"
-                    onChange={(e) => setNewTabName(e.target.value)}
-                    onBlur={addTab}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addTab();
-                      if (e.key === 'Escape') { setAddingTab(false); setNewTabName(''); }
-                    }}
-                  />
-                </div>
-              ) : (
-                <button className="home-tab-add" onClick={() => { setAddingTab(true); setNewTabName(''); }} title="New tab">＋</button>
-              ))}
           </div>
+          {user &&
+            (addingTab ? (
+              <div className="home-tab-add-input">
+                <input
+                  className="home-tab-input"
+                  autoFocus
+                  value={newTabName}
+                  placeholder="Tab name"
+                  onChange={(e) => setNewTabName(e.target.value)}
+                  onBlur={addTab}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addTab();
+                    if (e.key === 'Escape') { setAddingTab(false); setNewTabName(''); }
+                  }}
+                />
+              </div>
+            ) : (
+              <button className="home-tab-add" onClick={() => { setAddingTab(true); setNewTabName(''); }} title="New tab">＋</button>
+            ))}
           <div className="home-tabs-count">{visibleCanvases.length} {visibleCanvases.length === 1 ? 'canvas' : 'canvases'}</div>
         </nav>
         <section className="home-content">
