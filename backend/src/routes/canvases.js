@@ -15,6 +15,7 @@ router.get('/', async (req, res, next) => {
     const userId = req.user ? req.user.sub : null;
     const { rows } = await pool.query(
       `SELECT c.id, c.name, c.description, c.owner_id, u.name AS owner_name,
+              c.category_id,
               (c.owner_id IS NULL OR c.is_public) AS is_public,
               c.created_at, c.updated_at,
               (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count,
@@ -38,13 +39,19 @@ router.post('/', async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Authentication required to create a canvas' });
     const name = await uniqueCanvasName(req.body.name || 'Untitled canvas', req.user.sub);
     const description = (req.body.description || '').trim();
+    let categoryId = null;
+    if (req.body.category_id) {
+      const cat = await pool.query('SELECT id FROM categories WHERE id=$1 AND owner_id=$2', [
+        req.body.category_id,
+        req.user.sub,
+      ]);
+      if (cat.rows[0]) categoryId = cat.rows[0].id;
+    }
     const id = uuid();
-    await pool.query('INSERT INTO canvases (id, name, description, owner_id) VALUES ($1,$2,$3,$4)', [
-      id,
-      name,
-      description,
-      req.user.sub,
-    ]);
+    await pool.query(
+      'INSERT INTO canvases (id, name, description, owner_id, category_id) VALUES ($1,$2,$3,$4,$5)',
+      [id, name, description, req.user.sub, categoryId]
+    );
 
     const rootId = uuid();
     await pool.query(
@@ -55,6 +62,43 @@ router.post('/', async (req, res, next) => {
 
     const { rows } = await pool.query('SELECT * FROM canvases WHERE id=$1', [id]);
     res.status(201).json({ ...rows[0], root_node_id: rootId });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Move one or more canvases into a category (category_id null = uncategorized).
+router.post('/move', async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    const rawIds = req.body.canvas_ids;
+    const ids = Array.isArray(rawIds) ? rawIds : rawIds ? [rawIds] : [];
+    if (!ids.length) return res.status(400).json({ error: 'canvas_ids is required' });
+    const categoryId = req.body.category_id || null;
+
+    if (categoryId) {
+      const cat = await pool.query('SELECT id FROM categories WHERE id=$1 AND owner_id=$2', [
+        categoryId,
+        req.user.sub,
+      ]);
+      if (!cat.rows[0]) return res.status(404).json({ error: 'Category not found' });
+    }
+
+    // Only canvases the user owns may be categorized.
+    let moved = 0;
+    for (const id of ids) {
+      const c = await pool.query('SELECT id FROM canvases WHERE id=$1 AND owner_id=$2', [
+        id,
+        req.user.sub,
+      ]);
+      if (!c.rows[0]) continue;
+      await pool.query('UPDATE canvases SET category_id=$1, updated_at=now() WHERE id=$2', [
+        categoryId,
+        c.rows[0].id,
+      ]);
+      moved += 1;
+    }
+    res.json({ moved });
   } catch (e) {
     next(e);
   }

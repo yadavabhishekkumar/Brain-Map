@@ -27,13 +27,24 @@ async function request(path, options = {}) {
 
 export const api = {
   listCanvases: () => request('/canvases'),
-  createCanvas: (name) => request('/canvases', { method: 'POST', body: JSON.stringify({ name }) }),
+  createCanvas: (name, categoryId) =>
+    request('/canvases', { method: 'POST', body: JSON.stringify({ name, category_id: categoryId || null }) }),
   getCanvas: (id) => request(`/canvases/${id}`),
   updateCanvas: (id, data) => request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCanvas: (id) => request(`/canvases/${id}`, { method: 'DELETE' }),
   forkCanvas: (id) => request(`/canvases/${id}/fork`, { method: 'POST' }),
   setCanvasVisibility: (id, isPublic) =>
     request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_public: isPublic }) }),
+
+  listCategories: () => request('/categories'),
+  createCategory: (name) => request('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameCategory: (id, name) => request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  deleteCategory: (id) => request(`/categories/${id}`, { method: 'DELETE' }),
+  moveCanvases: (canvasIds, categoryId) =>
+    request('/canvases/move', {
+      method: 'POST',
+      body: JSON.stringify({ canvas_ids: canvasIds, category_id: categoryId || null }),
+    }),
 
   signup: (email, password, name) =>
     request('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
