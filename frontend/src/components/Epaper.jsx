@@ -300,7 +300,16 @@ export default function Epaper({ onBack, onOpenCanvas }) {
 
       <div className="epaper-card">
         <label>Start date</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => {
+            setDate(e.target.value);
+            // Auto-fill the end date with the start date (a single-day download by
+            // default). The user can still change the end date to download a range.
+            setToDate(e.target.value);
+          }}
+        />
 
         <label>End date (optional — for a range)</label>
         <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />

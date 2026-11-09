@@ -3,47 +3,53 @@ import { api } from '../api';
 import MicButton from './MicButton';
 import { AI_MODELS, getAiModel, setAiModel } from '../aiModel';
 
+const SYSTEM_TABS = { all: 'all', uncategorized: 'uncategorized', shared: 'shared' };
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Good night';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function initials(user) {
+  const n = ((user && (user.name || user.email)) || '?').trim();
+  return n.slice(0, 2).toUpperCase();
+}
+
 export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onProfileUpdated }) {
   const [canvases, setCanvases] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiModel, setAiModelState] = useState(getAiModel());
-  const [filter, setFilter] = useState('all'); // 'all' | 'private'
+  const [activeTab, setActiveTab] = useState(SYSTEM_TABS.all);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [editMsg, setEditMsg] = useState('');
-
-  const openEdit = () => {
-    setEditName(user ? user.name || '' : '');
-    setEditMsg('');
-    setEditOpen(true);
-  };
-
-  const saveProfile = async () => {
-    const n = editName.trim();
-    if (!n) {
-      setEditMsg('Name is required.');
-      return;
-    }
-    setSavingProfile(true);
-    setEditMsg('');
-    try {
-      const r = await api.updateProfile(n);
-      onProfileUpdated(r.user);
-      setEditOpen(false);
-    } catch (e) {
-      setEditMsg(e.message);
-    } finally {
-      setSavingProfile(false);
-    }
-  };
+  const [selected, setSelected] = useState(() => new Set());
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [addingTab, setAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState('');
+  const [renamingTab, setRenamingTab] = useState(null);
 
   const load = async () => {
     try {
-      setCanvases(await api.listCanvases());
+      const cs = await api.listCanvases();
+      let cats = [];
+      if (user) {
+        try {
+          cats = await api.listCategories();
+        } catch (e) {
+          // categories are optional for older backends
+        }
+      }
+      setCanvases(cs);
+      setCategories(cats);
     } catch (e) {
       alert(e.message);
     } finally {
@@ -53,14 +59,34 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user ? user.id : null]);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setMoveOpen(false);
+  };
 
   const create = async () => {
     if (!user) { onSignIn(); return; }
     if (!name.trim() || creating) return;
     setCreating(true);
     try {
-      const c = await api.createCanvas(name.trim());
+      const isCategory =
+        activeTab !== SYSTEM_TABS.all &&
+        activeTab !== SYSTEM_TABS.uncategorized &&
+        activeTab !== SYSTEM_TABS.shared;
+      const categoryId = isCategory ? activeTab : null;
+      const c = await api.createCanvas(name.trim(), categoryId);
       setName('');
       await load();
       onOpen(c.id, c.name);
@@ -75,6 +101,11 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     if (!window.confirm('Delete this canvas and all its content?')) return;
     try {
       await api.deleteCanvas(id);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await load();
     } catch (e) {
       alert(e.message);
@@ -105,29 +136,100 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     }
   };
 
-  // Visible canvases after the public/private filter.
-  const visibleCanvases = useMemo(() => {
-    if (filter === 'private') return canvases.filter((c) => !c.is_public);
-    return canvases;
-  }, [canvases, filter]);
-
-  // Build a parent/child tree from linked canvases so related canvases nest.
-  const { childrenMap, roots } = useMemo(() => {
-    const byId = new Map(visibleCanvases.map((c) => [c.id, c]));
-    const childrenMap = new Map();
-    const roots = [];
-    for (const c of visibleCanvases) {
-      const parentId =
-        c.linked_from_canvas_id && byId.has(c.linked_from_canvas_id) ? c.linked_from_canvas_id : null;
-      if (parentId) {
-        if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
-        childrenMap.get(parentId).push(c);
-      } else {
-        roots.push(c);
-      }
+  const addTab = async () => {
+    if (!user) { onSignIn(); return; }
+    const n = newTabName.trim();
+    if (!n || creating) return;
+    setAddingTab(false);
+    setNewTabName('');
+    try {
+      const cat = await api.createCategory(n);
+      await load();
+      setActiveTab(cat.id);
+    } catch (e) {
+      alert(e.message);
     }
-    return { childrenMap, roots };
-  }, [visibleCanvases]);
+  };
+
+  const commitRenameTab = async () => {
+    const t = renamingTab;
+    if (!t) return;
+    const n = (t.name || '').trim();
+    if (!n) { setRenamingTab(null); return; }
+    try {
+      await api.renameCategory(t.id, n);
+      setRenamingTab(null);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const deleteTab = async (id) => {
+    const cat = categories.find((c) => c.id === id);
+    if (!window.confirm(`Delete tab "${cat ? cat.name : ''}"? Its canvases will move to "Uncategorized".`)) return;
+    try {
+      await api.deleteCategory(id);
+      if (activeTab === id) setActiveTab(SYSTEM_TABS.uncategorized);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const moveTo = async (categoryId) => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    try {
+      await api.moveCanvases(ids, categoryId);
+      clearSelection();
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const moveOne = (id) => {
+    setSelected(new Set([id]));
+    setMoveOpen(true);
+  };
+
+  const createAndMove = async () => {
+    if (!user) { onSignIn(); return; }
+    const n = newTabName.trim();
+    if (!n) return;
+    try {
+      const cat = await api.createCategory(n);
+      setNewTabName('');
+      await moveTo(cat.id);
+      setActiveTab(cat.id);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const tabs = useMemo(() => {
+    const list = [{ id: SYSTEM_TABS.all, label: 'All', system: true }];
+    if (user) list.push({ id: SYSTEM_TABS.uncategorized, label: 'Uncategorized', system: true });
+    for (const c of categories) {
+      list.push({ id: c.id, label: c.name, system: false, count: c.canvas_count });
+    }
+    list.push({ id: SYSTEM_TABS.shared, label: 'Shared', system: true });
+    return list;
+  }, [categories, user]);
+
+  const visibleCanvases = useMemo(() => {
+    switch (activeTab) {
+      case SYSTEM_TABS.all:
+        return canvases;
+      case SYSTEM_TABS.uncategorized:
+        return canvases.filter((c) => user && c.owner_id === user.id && !c.category_id);
+      case SYSTEM_TABS.shared:
+        return canvases.filter((c) => c.is_public && (!user || c.owner_id !== user.id));
+      default:
+        return canvases.filter((c) => c.category_id === activeTab);
+    }
+  }, [canvases, activeTab, user]);
 
   const formatDate = (iso) => {
     const d = new Date(iso);
@@ -135,212 +237,317 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const renderRow = (canvas, depth) => {
-    const kids = childrenMap.get(canvas.id) || [];
-    const related = depth > 0;
-    const size =
-      `${canvas.node_count} topic${canvas.node_count === 1 ? '' : 's'}` +
-      (canvas.attachment_count ? ` · ${canvas.attachment_count} 📎` : '');
-    return (
-      <div key={canvas.id}>
-        <div className={`canvas-row${related ? ' canvas-row-related' : ''}`}>
-          <div className="canvas-row-name-cell" style={{ paddingLeft: depth * 28 }}>
-            <div className="canvas-row-title">
-              {related && <span className="canvas-row-connector">↳</span>}
-              <span className="canvas-row-name" onClick={() => onOpen(canvas.id, canvas.name)}>
-                {canvas.name}
-              </span>
-              {related && (
-                <span className="canvas-link-badge" title="Linked from another canvas">
-                  🔗 linked
-                </span>
-              )}
-              <span className={`canvas-visibility-badge${canvas.is_public ? '' : ' canvas-visibility-private'}`}>
-                {canvas.is_public ? '🌍 Public' : '🔒 Private'}
-              </span>
-            </div>
-            <div className="canvas-row-desc">{canvas.description ? canvas.description : 'No description'}</div>
-          </div>
-          <span className="canvas-row-size">{size}</span>
-          <span className="canvas-row-date">{formatDate(canvas.updated_at)}</span>
-          <div className="canvas-row-actions">
-            <button
-              className="btn icon-btn row-icon-btn"
-              title="Open canvas"
-              aria-label={`Open ${canvas.name}`}
-              onClick={() => onOpen(canvas.id, canvas.name)}
-            >
-              ↗
-            </button>
-            {canvas.is_public && user && (!canvas.owner_id || canvas.owner_id !== user.id) && (
-              <button
-                className="btn icon-btn row-icon-btn"
-                title="Fork into my account"
-                aria-label="Fork canvas"
-                onClick={() => fork(canvas.id)}
-              >
-                🍴
-              </button>
-            )}
-            {user && canvas.owner_id === user.id && (
-              <button
-                className="btn icon-btn row-icon-btn"
-                title={canvas.is_public ? 'Make private' : 'Make public'}
-                aria-label={canvas.is_public ? 'Make private' : 'Make public'}
-                onClick={() => togglePublic(canvas)}
-              >
-                {canvas.is_public ? '🔒' : '🌐'}
-              </button>
-            )}
-            {user && (canvas.owner_id === user.id || (user.is_superuser && canvas.is_public)) && (
-              <button
-                className="btn icon-btn row-icon-btn row-icon-btn-danger"
-                title="Delete canvas"
-                aria-label="Delete canvas"
-                onClick={() => remove(canvas.id)}
-              >
-                🗑
-              </button>
-            )}
-          </div>
-        </div>
-        {kids.map((k) => renderRow(k, depth + 1))}
-      </div>
-    );
+  const categoryName = (id) => {
+    const c = categories.find((x) => x.id === id);
+    return c ? c.name : '';
+  };
+
+  const openEdit = () => {
+    setEditName(user ? user.name || '' : '');
+    setEditMsg('');
+    setEditOpen(true);
+  };
+
+  const saveProfile = async () => {
+    const n = editName.trim();
+    if (!n) { setEditMsg('Name is required.'); return; }
+    setSavingProfile(true);
+    setEditMsg('');
+    try {
+      const r = await api.updateProfile(n);
+      onProfileUpdated(r.user);
+      setEditOpen(false);
+    } catch (e) {
+      setEditMsg(e.message);
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
-    <div className="canvas-list-page">
-      <div className="account-bar">
-        <div className="visibility-filter">
-          {user && (
-            <>
-              <button className={`btn btn-sm${filter === 'all' ? ' btn-primary' : ''}`} onClick={() => setFilter('all')}>All maps</button>
-              <button className={`btn btn-sm${filter === 'private' ? ' btn-primary' : ''}`} onClick={() => setFilter('private')}>🔒 Private</button>
-            </>
-          )}
-        </div>
-        <div className="account-bar-actions">
-          {user ? (
-            <div className="profile-menu">
-              <button className="account-chip" onClick={() => setMenuOpen((v) => !v)}>
-                <span className="account-name">👤 {user.name || user.email}</span>
-                {user.is_superuser && (
-                  <span className="super-badge" title="Super user — can delete any public canvas">👑</span>
-                )}
-                <span className="profile-caret">▾</span>
-              </button>
-              {menuOpen && (
-                <div className="profile-dropdown">
-                  {user.is_superuser && (
-                    <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); onOpenStats(); }}>
-                      📊 Statistics
-                    </button>
-                  )}
-                  <button className="profile-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
-                    ✏️ Edit Profile
-                  </button>
-                  <button className="profile-dropdown-item profile-dropdown-danger" onClick={() => { setMenuOpen(false); onSignOut(); }}>
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button className="btn btn-sm btn-primary" onClick={onSignIn}>Sign in / Sign up</button>
-          )}
-        </div>
+    <div className="home">
+      <div className="home-aurora" aria-hidden="true">
+        <span className="home-aurora-blob home-aurora-1" />
+        <span className="home-aurora-blob home-aurora-2" />
+        <span className="home-aurora-blob home-aurora-3" />
+      </div>
 
-        {editOpen && (
-          <div className="profile-modal-overlay" onClick={() => setEditOpen(false)}>
-            <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>✏️ Edit Profile</h3>
-              <label>Display name (username)</label>
-              <input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
-              <div className="profile-modal-actions">
-                <button className="btn btn-sm" onClick={() => setEditOpen(false)}>Cancel</button>
-                <button className="btn btn-sm btn-primary" onClick={saveProfile} disabled={savingProfile}>
-                  {savingProfile ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-              {editMsg && <div className="epaper-error">{editMsg}</div>}
+      <div className="home-shell">
+        <header className="home-topbar">
+          <div className="home-brand">
+            <div className="home-logo">🧠</div>
+            <div className="home-brand-text">
+              <div className="home-brand-name">UPSC Brain Map</div>
+              <div className="home-brand-sub">Think · Map · Revise</div>
             </div>
           </div>
+          <div className="home-topbar-right">
+            {user && (
+              <div className="home-ai-select">
+                <label htmlFor="ai-model">AI</label>
+                <select
+                  id="ai-model"
+                  value={aiModel}
+                  onChange={(e) => {
+                    setAiModel(e.target.value);
+                    setAiModelState(e.target.value);
+                  }}
+                >
+                  {AI_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {user ? (
+              <div className="home-profile">
+                <button className="home-chip" onClick={() => setMenuOpen((v) => !v)}>
+                  <span className="home-avatar">{initials(user)}</span>
+                  <span className="home-chip-name">{user.name || user.email}</span>
+                  {user.is_superuser && <span className="home-super" title="Super user">👑</span>}
+                  <span className="home-caret">▾</span>
+                </button>
+                {menuOpen && (
+                  <div className="home-dropdown">
+                    {user.is_superuser && (
+                      <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); onOpenStats(); }}>
+                        📊 Statistics
+                      </button>
+                    )}
+                    <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
+                      ✏️ Edit profile
+                    </button>
+                    <button className="home-dropdown-item home-dropdown-danger" onClick={() => { setMenuOpen(false); onSignOut(); }}>
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button className="home-btn home-btn-primary" onClick={onSignIn}>Sign in</button>
+            )}
+          </div>
+        </header>
+        <section className="home-hero">
+          <div className="home-hero-copy">
+            <h1>{user ? `${greeting()}, ${user.name || user.email}` : 'Your knowledge, mapped.'}</h1>
+            <p>Build syllabus-anchored mind maps, attach notes, extract text with AI, and search everything instantly.</p>
+          </div>
+          <div className="home-create">
+            <div className="home-create-input">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && create()}
+                placeholder="Name a new canvas — Polity, History, Geography…"
+              />
+              <MicButton onText={(t) => setName((v) => (v ? v + ' ' + t : t))} />
+            </div>
+            <button className="home-btn home-btn-gradient" onClick={create} disabled={creating || !name.trim()}>
+              {creating ? 'Creating…' : '＋ New canvas'}
+            </button>
+          </div>
+        </section>
+
+        <nav className="home-tabs">
+          <div className="home-tabs-scroll">
+            {tabs.map((tab) => {
+              const active = activeTab === tab.id;
+              const renaming = renamingTab && renamingTab.id === tab.id;
+              return (
+                <div key={tab.id} className={`home-tab${active ? ' home-tab-active' : ''}`}>
+                  {renaming ? (
+                    <input
+                      className="home-tab-input"
+                      autoFocus
+                      value={renamingTab.name}
+                      onChange={(e) => setRenamingTab({ ...renamingTab, name: e.target.value })}
+                      onBlur={commitRenameTab}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRenameTab();
+                        if (e.key === 'Escape') setRenamingTab(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      className="home-tab-btn"
+                      onClick={() => setActiveTab(tab.id)}
+                      onDoubleClick={() => !tab.system && setRenamingTab({ id: tab.id, name: tab.label })}
+                    >
+                      {tab.label}
+                      {tab.count !== undefined && <span className="home-tab-count">{tab.count}</span>}
+                    </button>
+                  )}
+                  {!tab.system && !renaming && (
+                    <button className="home-tab-close" title="Delete tab" onClick={() => deleteTab(tab.id)}>×</button>
+                  )}
+                </div>
+              );
+            })}
+            {user &&
+              (addingTab ? (
+                <div className="home-tab home-tab-add">
+                  <input
+                    className="home-tab-input"
+                    autoFocus
+                    value={newTabName}
+                    placeholder="Tab name"
+                    onChange={(e) => setNewTabName(e.target.value)}
+                    onBlur={addTab}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addTab();
+                      if (e.key === 'Escape') { setAddingTab(false); setNewTabName(''); }
+                    }}
+                  />
+                </div>
+              ) : (
+                <button className="home-tab-add" onClick={() => { setAddingTab(true); setNewTabName(''); }} title="New tab">＋</button>
+              ))}
+          </div>
+          <div className="home-tabs-count">{visibleCanvases.length} {visibleCanvases.length === 1 ? 'canvas' : 'canvases'}</div>
+        </nav>
+        <section className="home-content">
+          {loading ? (
+            <div className="home-grid">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="home-skeleton" />
+              ))}
+            </div>
+          ) : visibleCanvases.length === 0 ? (
+            <div className="home-empty">
+              <div className="home-empty-icon">🗂️</div>
+              <h3>No canvases here</h3>
+              <p>{user ? 'Create your first canvas above, or move existing canvases into this tab.' : 'Sign in to start building your own mind maps.'}</p>
+            </div>
+          ) : (
+            <div className="home-grid">
+              {visibleCanvases.map((c) => {
+                const isSelected = selected.has(c.id);
+                const isOwner = user && c.owner_id === user.id;
+                const catId = c.category_id;
+                return (
+                  <article
+                    key={c.id}
+                    className={`home-card${isSelected ? ' home-card-selected' : ''}`}
+                    onClick={() => onOpen(c.id, c.name)}
+                  >
+                    {user && (
+                      <button
+                        type="button"
+                        className={`home-check${isSelected ? ' home-check-on' : ''}`}
+                        aria-pressed={isSelected}
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}
+                      >
+                        {isSelected ? '✓' : ''}
+                      </button>
+                    )}
+                    <div className="home-card-head">
+                      <span className={`home-pill${c.is_public ? ' home-pill-public' : ' home-pill-private'}`}>
+                        {c.is_public ? 'Public' : 'Private'}
+                      </span>
+                      <div className="home-card-actions">
+                        {isOwner && (
+                          <>
+                            <button className="home-mini" title="Move to tab" onClick={(e) => { e.stopPropagation(); moveOne(c.id); }}>⇄</button>
+                            <button className="home-mini" title={c.is_public ? 'Make private' : 'Make public'} onClick={(e) => { e.stopPropagation(); togglePublic(c); }}>
+                              {c.is_public ? '🔒' : '🌐'}
+                            </button>
+                            <button className="home-mini home-mini-danger" title="Delete" onClick={(e) => { e.stopPropagation(); remove(c.id); }}>🗑</button>
+                          </>
+                        )}
+                        {c.is_public && user && (!c.owner_id || c.owner_id !== user.id) && (
+                          <button className="home-mini" title="Fork into my account" onClick={(e) => { e.stopPropagation(); fork(c.id); }}>🍴</button>
+                        )}
+                      </div>
+                    </div>
+                    <h3 className="home-card-title">{c.name}</h3>
+                    <p className="home-card-desc">{c.description || 'No description yet'}</p>
+                    <div className="home-card-foot">
+                      <span className="home-card-meta">
+                        {c.node_count} topic{c.node_count === 1 ? '' : 's'}
+                        {c.attachment_count ? ` · ${c.attachment_count} 📎` : ''}
+                      </span>
+                      <span className="home-card-date">{formatDate(c.updated_at)}</span>
+                    </div>
+                    {catId && (
+                      <span
+                        className="home-card-tag"
+                        onClick={(e) => { e.stopPropagation(); setActiveTab(catId); }}
+                      >
+                        📁 {categoryName(catId)}
+                      </span>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        {user && (
+          <section className="home-extra">
+            <button className="home-epaper" onClick={onOpenEpaper}>
+              <span className="home-epaper-emoji">📰</span>
+              <span className="home-epaper-text">
+                <strong>The Hindu E-Paper</strong>
+                <small>Download daily e-paper PDFs by date</small>
+              </span>
+              <span className="home-epaper-cta">Open downloader →</span>
+            </button>
+          </section>
         )}
       </div>
 
-      <div className="hero">
-        <h1>🧠 UPSC Brain Map</h1>
-        <p className="hero-sub">
-          Build syllabus-anchored mind maps, attach screenshots of personal notes, extract
-          their text with AI, and search everything instantly.
-        </p>
-        <div className="create-row">
-          <div className="voice-field">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && create()}
-              placeholder="Canvas name (e.g. Polity, History, Geography)"
-            />
-            <MicButton onText={(t) => setName((v) => (v ? v + ' ' + t : t))} />
+      {selected.size > 0 && (
+        <div className="home-selection">
+          <div className="home-selection-inner">
+            <span className="home-selection-count">{selected.size} selected</span>
+            <button className="home-btn home-btn-ghost" onClick={() => setMoveOpen((v) => !v)}>Move to tab</button>
+            <button className="home-btn home-btn-ghost" onClick={clearSelection}>Clear</button>
           </div>
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={create}
-            disabled={creating || !name.trim()}
-          >
-            {creating ? 'Creating…' : '＋ Create a blank Canvas'}
-          </button>
         </div>
-      </div>
+      )}
 
-      {user && (
-        <div className="ai-model-selector">
-          <label htmlFor="ai-model">🤖 Default AI model</label>
-          <select
-            id="ai-model"
-            value={aiModel}
-            onChange={(e) => {
-              setAiModel(e.target.value);
-              setAiModelState(e.target.value);
-            }}
-          >
-            {AI_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
+      {moveOpen && (
+        <div className="home-modal-overlay" onClick={() => setMoveOpen(false)}>
+          <div className="home-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Move {selected.size} canvas{selected.size === 1 ? '' : 'es'} to…</h3>
+            <button className="home-modal-row" onClick={() => moveTo(null)}>
+              <span>📂</span> Uncategorized
+            </button>
+            {categories.map((cat) => (
+              <button key={cat.id} className="home-modal-row" onClick={() => moveTo(cat.id)}>
+                <span>📁</span> {cat.name}
+              </button>
             ))}
-          </select>
-        </div>
-      )}
-      {user && <div className="ai-model-hint">{AI_MODELS.find((m) => m.id === aiModel)?.hint || ''}</div>}
-
-      {user && (
-        <div className="epaper-banner">
-          <div>
-            <div className="epaper-banner-title">📰 The Hindu E-Paper</div>
-            <div className="epaper-banner-sub">Systematically download daily e-paper PDFs by date.</div>
+            <div className="home-modal-divider" />
+            <div className="home-modal-new">
+              <input
+                autoFocus
+                value={newTabName}
+                placeholder="New tab name…"
+                onChange={(e) => setNewTabName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && createAndMove()}
+              />
+              <button className="home-btn home-btn-primary" onClick={createAndMove}>Create & move</button>
+            </div>
           </div>
-          <button className="btn" onClick={onOpenEpaper}>
-            Open Downloader
-          </button>
         </div>
       )}
 
-      {loading ? (
-        <div className="muted">Loading canvases…</div>
-      ) : canvases.length === 0 ? (
-        <div className="empty">No canvases yet. Create your first blank canvas above.</div>
-      ) : (
-        <div className="canvas-list">
-          <div className="canvas-list-header">
-            <span>Canvas</span>
-            <span>Size</span>
-            <span>Modified</span>
-            <span></span>
+      {editOpen && (
+        <div className="home-modal-overlay" onClick={() => setEditOpen(false)}>
+          <div className="home-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>✏️ Edit profile</h3>
+            <label className="home-label">Display name</label>
+            <input className="home-input" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+            <div className="home-modal-actions">
+              <button className="home-btn home-btn-ghost" onClick={() => setEditOpen(false)}>Cancel</button>
+              <button className="home-btn home-btn-primary" onClick={saveProfile} disabled={savingProfile}>
+                {savingProfile ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {editMsg && <div className="home-error">{editMsg}</div>}
           </div>
-          {roots.map((c) => renderRow(c, 0))}
         </div>
       )}
     </div>

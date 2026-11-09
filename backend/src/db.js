@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS canvases (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS categories (
+  id UUID PRIMARY KEY,
+  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id UUID PRIMARY KEY,
   canvas_id UUID NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
@@ -98,6 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_node_chats_node ON node_chats(node_id);
 CREATE INDEX IF NOT EXISTS idx_canvas_chats_canvas ON canvas_chats(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_edges_canvas ON edges(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_node ON attachments(node_id);
+CREATE INDEX IF NOT EXISTS idx_categories_owner ON categories(owner_id);
 `;
 
 async function initSchema() {
@@ -113,6 +122,14 @@ async function initSchema() {
   // Migration for owned-but-public canvases (public no longer requires dropping ownership).
   await pool.query(
     `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false`
+  );
+  // Migration for canvas categories ("tabs"). The column is added here (rather than in
+  // the base schema) so pre-existing databases are upgraded without a full rebuild.
+  await pool.query(
+    `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id) ON DELETE SET NULL`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_canvases_category ON canvases(category_id)`
   );
 }
 
