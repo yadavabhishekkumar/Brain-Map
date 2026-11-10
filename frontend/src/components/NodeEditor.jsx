@@ -36,11 +36,39 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [rearrangeMode, setRearrangeMode] = useState('keep');
   const [rearranging, setRearranging] = useState(false);
   const resizeRef = useRef({ active: false, startX: 0, startWidth: width });
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const closeDragRef = useRef(null);
 
   const startResize = (e) => {
     e.preventDefault();
     resizeRef.current = { active: true, startX: e.clientX, startWidth: width };
     document.body.classList.add('resizing');
+  };
+
+  const onCloseHandlePointerDown = (e) => {
+    closeDragRef.current = { startX: e.clientX, startY: e.clientY, x: 0 };
+    setDragging(true);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  };
+
+  const onCloseHandlePointerMove = (e) => {
+    if (!closeDragRef.current) return;
+    const dx = e.clientX - closeDragRef.current.startX;
+    const dy = e.clientY - closeDragRef.current.startY;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      closeDragRef.current.x = Math.max(0, dx);
+      setDragX(closeDragRef.current.x);
+    }
+  };
+
+  const onCloseHandlePointerEnd = () => {
+    if (!closeDragRef.current) return;
+    const shouldClose = closeDragRef.current.x > 100;
+    closeDragRef.current = null;
+    setDragging(false);
+    setDragX(0);
+    if (shouldClose) onClose();
   };
 
   useEffect(() => {
@@ -376,8 +404,26 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   }
 
   return (
-    <aside className="node-editor" style={{ width }}>
+    <aside
+      className="node-editor"
+      style={{
+        width,
+        transform: dragX ? `translateX(${dragX}px)` : undefined,
+        transition: dragging ? 'none' : 'transform 0.2s ease',
+      }}
+    >
       <div className="resize-handle" onMouseDown={startResize} title="Drag to resize" />
+      <div
+        className="mobile-close-handle"
+        onPointerDown={onCloseHandlePointerDown}
+        onPointerMove={onCloseHandlePointerMove}
+        onPointerUp={onCloseHandlePointerEnd}
+        onPointerCancel={onCloseHandlePointerEnd}
+        title="Drag right to close"
+        aria-label="Drag right to close"
+      >
+        <span className="mobile-close-grip" />
+      </div>
       <div className="panel-header">
         <h3>Topic</h3>
         <button className="btn btn-ghost" onClick={onClose}>

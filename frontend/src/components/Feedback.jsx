@@ -106,6 +106,16 @@ export default function Feedback({ onBack }) {
     }
   };
 
+  const toggleStatus = async (f) => {
+    const next = f.status === 'approved' ? 'unapproved' : 'approved';
+    try {
+      await api.setFeedbackStatus(f.id, next);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   const openExport = () => {
     setFromDate(toYmd(new Date(Date.now() - 24 * 60 * 60 * 1000)));
     setToDate(toYmd(new Date()));
@@ -166,6 +176,21 @@ export default function Feedback({ onBack }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const saveResultAsItem = async () => {
+    if (!resultText.trim() || saving) return;
+    setSaving(true);
+    try {
+      await api.createFeedback(resultText.trim());
+      setResultOpen(false);
+      setResultText('');
+      await load();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="feedback-page">
       <div className="feedback-aurora" aria-hidden="true" />
@@ -222,12 +247,19 @@ export default function Feedback({ onBack }) {
             items.map((f) => (
               <article key={f.id} className="feedback-item">
                 <div className="feedback-item-head">
-                  <div className="feedback-item-date">{formatDate(f.created_at)}</div>
+                  <button
+                    className={`feedback-status${f.status === 'approved' ? ' feedback-status-approved' : ''}`}
+                    onClick={() => toggleStatus(f)}
+                    title="Toggle approval status"
+                  >
+                    {f.status === 'approved' ? '✓ Approved' : 'Unapproved'}
+                  </button>
                   <div className="feedback-item-actions">
                     <button className="feedback-mini" onClick={() => startEdit(f)} title="Edit" aria-label="Edit">✏️</button>
                     <button className="feedback-mini feedback-mini-danger" onClick={() => remove(f)} title="Delete" aria-label="Delete">🗑</button>
                   </div>
                 </div>
+                <div className="feedback-item-date">{formatDate(f.created_at)}</div>
                 {editingId === f.id ? (
                   <div className="feedback-edit">
                     <div className="voice-field">
@@ -289,6 +321,7 @@ export default function Feedback({ onBack }) {
             <textarea id="feedback-result" className="feedback-result" readOnly value={resultText} />
             <div className="home-modal-actions">
               <button className="home-btn home-btn-ghost" onClick={() => setResultOpen(false)}>Close</button>
+              <button className="home-btn home-btn-ghost" onClick={saveResultAsItem} disabled={saving}>💾 Save as item</button>
               <button className="home-btn home-btn-primary" onClick={copyResult}>📋 Copy</button>
             </div>
             {copied && <div className="feedback-copied">Copied to clipboard!</div>}

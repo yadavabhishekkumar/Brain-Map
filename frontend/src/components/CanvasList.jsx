@@ -18,6 +18,42 @@ function initials(user) {
   return n.slice(0, 2).toUpperCase();
 }
 
+// Order canvases so that linked parent canvases come first, immediately
+// followed by their children (sequentially), and the remaining unlinked
+// canvases are sorted alphabetically.
+function sortCanvases(list) {
+  const byId = new Map(list.map((c) => [c.id, c]));
+  const children = new Map();
+  const incoming = new Map();
+
+  for (const c of list) {
+    const kids = (c.linked_to || []).map((l) => l.id).filter((id) => byId.has(id));
+    kids.sort((a, b) => (byId.get(a).name || '').localeCompare(byId.get(b).name || ''));
+    children.set(c.id, kids);
+    for (const k of kids) incoming.set(k, (incoming.get(k) || 0) + 1);
+  }
+
+  const roots = list
+    .filter((c) => !incoming.get(c.id) && (children.get(c.id) || []).length > 0)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  const visited = new Set();
+  const ordered = [];
+  const visit = (id) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const c = byId.get(id);
+    if (c) ordered.push(c);
+    for (const kid of children.get(id) || []) visit(kid);
+  };
+  for (const r of roots) visit(r.id);
+
+  const rest = list
+    .filter((c) => !visited.has(c.id))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  return ordered.concat(rest);
+}
+
 export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onOpenFeedback, onProfileUpdated }) {
   const [canvases, setCanvases] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -25,7 +61,13 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiModel, setAiModelState] = useState(getAiModel());
-  const [activeTab, setActiveTab] = useState(SYSTEM_TABS.all);
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('canvas_active_tab') || SYSTEM_TABS.all;
+    } catch (e) {
+      return SYSTEM_TABS.all;
+    }
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -61,6 +103,23 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user ? user.id : null]);
+
+  // Persist the active tab so a refresh restores the same tab.
+  useEffect(() => {
+    try { localStorage.setItem('canvas_active_tab', activeTab); } catch (e) { /* ignore */ }
+  }, [activeTab]);
+
+  // If the restored tab no longer exists (e.g. a deleted category), fall back to "All".
+  useEffect(() => {
+    if (loading) return;
+    const valid = new Set([
+      SYSTEM_TABS.all,
+      SYSTEM_TABS.shared,
+      ...(user ? [SYSTEM_TABS.uncategorized] : []),
+      ...categories.map((c) => c.id),
+    ]);
+    if (!valid.has(activeTab)) setActiveTab(SYSTEM_TABS.all);
+  }, [loading, activeTab, categories, user]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -219,16 +278,21 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
   }, [categories, user]);
 
   const visibleCanvases = useMemo(() => {
+    let list;
     switch (activeTab) {
       case SYSTEM_TABS.all:
-        return canvases;
+        list = canvases;
+        break;
       case SYSTEM_TABS.uncategorized:
-        return canvases.filter((c) => user && c.owner_id === user.id && !c.category_id);
+        list = canvases.filter((c) => user && c.owner_id === user.id && !c.category_id);
+        break;
       case SYSTEM_TABS.shared:
-        return canvases.filter((c) => c.is_public && (!user || c.owner_id !== user.id));
+        list = canvases.filter((c) => c.is_public && (!user || c.owner_id !== user.id));
+        break;
       default:
-        return canvases.filter((c) => c.category_id === activeTab);
+        list = canvases.filter((c) => c.category_id === activeTab);
     }
+    return sortCanvases(list);
   }, [canvases, activeTab, user]);
 
   const formatDate = (iso) => {
