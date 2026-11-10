@@ -60,6 +60,8 @@ export const api = {
 
   listFeedback: () => request('/feedback'),
   createFeedback: (content) => request('/feedback', { method: 'POST', body: JSON.stringify({ content }) }),
+  updateFeedback: (id, content) => request(`/feedback/${id}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  deleteFeedback: (id) => request(`/feedback/${id}`, { method: 'DELETE' }),
 
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
