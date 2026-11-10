@@ -18,7 +18,7 @@ function initials(user) {
   return n.slice(0, 2).toUpperCase();
 }
 
-export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onProfileUpdated }) {
+export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onOpenFeedback, onProfileUpdated }) {
   const [canvases, setCanvases] = useState([]);
   const [categories, setCategories] = useState([]);
   const [name, setName] = useState('');
@@ -314,6 +314,9 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                         📊 Statistics
                       </button>
                     )}
+                    <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
+                      💬 Feedback
+                    </button>
                     <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
                       ✏️ Edit profile
                     </button>

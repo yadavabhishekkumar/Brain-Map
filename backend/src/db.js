@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS feedback (
+  id UUID PRIMARY KEY,
+  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_nodes_canvas ON nodes(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage(user_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
@@ -107,6 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_canvas_chats_canvas ON canvas_chats(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_edges_canvas ON edges(canvas_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_node ON attachments(node_id);
 CREATE INDEX IF NOT EXISTS idx_categories_owner ON categories(owner_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_owner ON feedback(owner_id);
 `;
 
 async function initSchema() {

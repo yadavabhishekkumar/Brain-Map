@@ -32,6 +32,7 @@ async function main() {
   app.use('/api/auth', require('./routes/auth'));
   app.use('/api/canvases', require('./routes/canvases'));
   app.use('/api/categories', require('./routes/categories'));
+  app.use('/api/feedback', require('./routes/feedback'));
   app.use('/api/nodes', require('./routes/nodes'));
   app.use('/api/edges', require('./routes/edges'));
   app.use('/api/attachments', require('./routes/attachments'));

@@ -4,6 +4,7 @@ import BrainMapCanvas from './components/BrainMapCanvas';
 import Epaper from './components/Epaper';
 import AuthPage from './components/AuthPage';
 import Statistics from './components/Statistics';
+import Feedback from './components/Feedback';
 import { api } from './api';
 import { getUser, setAuth, clearAuth, getToken } from './auth';
 
@@ -31,6 +32,7 @@ function parseHash() {
   }
   if (raw.startsWith('epaper')) return { type: 'epaper' };
   if (raw.startsWith('stats')) return { type: 'stats' };
+  if (raw.startsWith('feedback')) return { type: 'feedback' };
   return { type: 'list' };
 }
 
@@ -60,6 +62,8 @@ export default function App() {
       window.location.hash = '#/epaper';
     } else if (next.type === 'stats') {
       window.location.hash = '#/stats';
+    } else if (next.type === 'feedback') {
+      window.location.hash = '#/feedback';
     } else {
       window.location.hash = '#/';
     }
@@ -119,6 +123,10 @@ export default function App() {
     return <Statistics onBack={() => navigate({ type: 'list' })} />;
   }
 
+  if (view.type === 'feedback') {
+    return <Feedback onBack={() => navigate({ type: 'list' })} />;
+  }
+
   return (
     <CanvasList
       user={user}
@@ -127,6 +135,7 @@ export default function App() {
       onSignIn={() => setShowAuth(true)}
       onSignOut={handleSignOut}
       onOpenStats={() => navigate({ type: 'stats' })}
+      onOpenFeedback={() => navigate({ type: 'feedback' })}
       onProfileUpdated={handleProfileUpdated}
     />
   );
