@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   id UUID PRIMARY KEY,
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'unapproved',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -138,6 +139,9 @@ async function initSchema() {
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_canvases_category ON canvases(category_id)`
+  );
+  await pool.query(
+    `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'unapproved'`
   );
 }
 

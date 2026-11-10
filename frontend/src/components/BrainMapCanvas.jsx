@@ -1432,8 +1432,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     setSelectedNodeId(null);
   }, []);
 
-  // Mobile only: auto-hide the floating controls (zoom / fullscreen / freeze)
-  // after 5s; tapping the bottom-left zone (of a 4x4 grid) brings them back.
+  // Mobile only: auto-hide the floating controls (zoom / fullscreen / freeze /
+  // fit) after 5s; tapping the left half of the bottom-left quadrant (of a
+  // 4x4 grid) brings them back.
   const scheduleHideControls = useCallback(() => {
     clearTimeout(hideControlsTimer.current);
     hideControlsTimer.current = setTimeout(() => {
@@ -1444,7 +1445,10 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const handleShellPointerDown = useCallback(
     (e) => {
       if (window.innerWidth > 768) return;
-      const inBottomLeft = e.clientX < window.innerWidth / 4 && e.clientY > (window.innerHeight * 3) / 4;
+      // Bottom-left quadrant = x < width/4 (left column of the 4x4 grid),
+      // y > height/2 (the whole lower-left half), not just the single
+      // bottom-left sub-cell.
+      const inBottomLeft = e.clientX < window.innerWidth / 4 && e.clientY > window.innerHeight / 2;
       if (inBottomLeft) {
         setFloatingControlsVisible(true);
         scheduleHideControls();
@@ -1628,7 +1632,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             {!editMode ? (
               <>
                 <ToolIcon glyph="🔍" label="Find topics" title="Search" active={searchOpen} onActivate={() => setSearchOpen((o) => !o)} />
-                <ToolIcon glyph="⤢" label="Fit screen" title="Fit the whole tree to the screen" onActivate={fitToScreen} />
                 <ToolIcon glyph="🔃" label="Rotate view" title="Rotate the tree 90° (top-down)" active={vertical} onActivate={() => setVertical((v) => !v)} />
                 <ToolIcon glyph="📊" label="Table view" title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'} active={tabularMode} onActivate={() => setTabularMode((v) => !v)} />
                 <ToolIcon glyph={zoomLock ? '🔒' : '🔓'} label={zoomLock ? 'Unlock zoom' : 'Lock zoom'} title={zoomLock ? 'Zoom lock ON — scroll to pan the canvas' : 'Zoom lock OFF — scroll to zoom'} active={zoomLock} onActivate={() => setZoomLock((v) => !v)} />
@@ -1701,6 +1704,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           )}
 
           <div className="canvas-floating-actions">
+            <button
+              className="floating-btn"
+              onClick={fitToScreen}
+              title="Fit screen"
+              aria-label="Fit screen"
+            >
+              ⤢
+            </button>
             <button
               className={`floating-btn${fullscreenMode ? ' floating-btn-active' : ''}`}
               onClick={() => setFullscreenMode((v) => !v)}
