@@ -384,26 +384,26 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                 </div>
               );
             })}
-            {user &&
-              (addingTab ? (
-                <div className="home-tab home-tab-add">
-                  <input
-                    className="home-tab-input"
-                    autoFocus
-                    value={newTabName}
-                    placeholder="Tab name"
-                    onChange={(e) => setNewTabName(e.target.value)}
-                    onBlur={addTab}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addTab();
-                      if (e.key === 'Escape') { setAddingTab(false); setNewTabName(''); }
-                    }}
-                  />
-                </div>
-              ) : (
-                <button className="home-tab-add" onClick={() => { setAddingTab(true); setNewTabName(''); }} title="New tab">＋</button>
-              ))}
           </div>
+          {user &&
+            (addingTab ? (
+              <div className="home-tab-add-input">
+                <input
+                  className="home-tab-input"
+                  autoFocus
+                  value={newTabName}
+                  placeholder="Tab name"
+                  onChange={(e) => setNewTabName(e.target.value)}
+                  onBlur={addTab}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addTab();
+                    if (e.key === 'Escape') { setAddingTab(false); setNewTabName(''); }
+                  }}
+                />
+              </div>
+            ) : (
+              <button className="home-tab-add" onClick={() => { setAddingTab(true); setNewTabName(''); }} title="New tab">＋</button>
+            ))}
           <div className="home-tabs-count">{visibleCanvases.length} {visibleCanvases.length === 1 ? 'canvas' : 'canvases'}</div>
         </nav>
         <section className="home-content">
@@ -428,7 +428,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                 return (
                   <article
                     key={c.id}
-                    className={`home-card${isSelected ? ' home-card-selected' : ''}`}
+                    className={`home-card${isSelected ? ' home-card-selected' : ''}${(c.linked_to && c.linked_to.length) || (c.linked_from && c.linked_from.length) ? ' home-card-linked' : ''}`}
                     onClick={() => onOpen(c.id, c.name)}
                   >
                     {user && (
@@ -469,6 +469,30 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                       </span>
                       <span className="home-card-date">{formatDate(c.updated_at)}</span>
                     </div>
+                    {(c.linked_to?.length > 0 || c.linked_from?.length > 0) && (
+                      <div className="home-card-links">
+                        {c.linked_to?.map((l) => (
+                          <button
+                            key={`to-${l.id}`}
+                            className="home-link-chip home-link-out"
+                            title={`Links to ${l.name}`}
+                            onClick={(e) => { e.stopPropagation(); onOpen(l.id, l.name); }}
+                          >
+                            {l.name} →
+                          </button>
+                        ))}
+                        {c.linked_from?.map((l) => (
+                          <button
+                            key={`from-${l.id}`}
+                            className="home-link-chip home-link-in"
+                            title={`Linked from ${l.name}`}
+                            onClick={(e) => { e.stopPropagation(); onOpen(l.id, l.name); }}
+                          >
+                            ← {l.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {catId && (
                       <span
                         className="home-card-tag"

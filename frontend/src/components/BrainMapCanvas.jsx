@@ -387,6 +387,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem('canvas_dark_mode') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
   const [panelWidth, setPanelWidth] = useState(360);
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
@@ -395,6 +402,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const { setCenter, fitView, zoomIn } = useReactFlow();
   const didFit = useRef(false);
   const clickTimer = useRef(null);
+  const lastNodeClickRef = useRef({ id: null, time: 0 });
   const paneClickTimer = useRef(null);
   const baselineRef = useRef(null);
   const tempIdRef = useRef(0);
@@ -850,6 +858,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
 
   // parent-child edges (solid, from tree) + cross-links (dashed, from edges table)
   const derivedEdges = useMemo(() => {
+    const parentStroke = darkMode ? '#768390' : '#94a3b8';
+    const linkStroke = darkMode ? '#539bf5' : '#1a73e8';
     const pc = nodes
       .filter((n) => n.data && n.data.parent_id)
       .map((n) => ({
@@ -858,19 +868,19 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         target: n.id,
         type: 'smoothstep',
         deletable: false,
-        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
+        style: { stroke: parentStroke, strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: parentStroke },
       }));
     const cl = edges.map((e) => ({
       ...e,
       type: 'smoothstep',
       deletable: true,
       animated: true,
-      style: { stroke: '#1a73e8', strokeWidth: 1.5, strokeDasharray: '6 6' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#1a73e8' },
+      style: { stroke: linkStroke, strokeWidth: 1.5, strokeDasharray: '6 6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: linkStroke },
     }));
     return [...pc, ...cl];
-  }, [nodes, edges]);
+  }, [nodes, edges, darkMode]);
 
   // In Focus Mode, only the most recently dropped node + its descendants
   // stay visible on the canvas; earlier focused nodes are "forgotten"
@@ -1465,38 +1475,45 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     }
   }, [closePanels, zoomIn, zoomLock]);
 
-  // Single click -> read-only preview (after a short delay so a double-click wins).
-  // Linked-canvas nodes are skipped: only double-click navigates into them.
-  const handleNodeClick = useCallback((e, node) => {
-    const d = node.data || {};
-    if (d.linked_canvas_id) return;
-    clearTimeout(clickTimer.current);
-    clickTimer.current = setTimeout(() => {
-      setPreviewNodeId(node.id);
-      setSelectedNodeId(null);
-    }, 220);
-  }, []);
+  // Click handling with a manual, mobile-friendly double-click detector. Two
+  // clicks on the same node within DOUBLE_CLICK_MS (300ms) count as a double
+  // click: linked-canvas nodes navigate into the linked canvas, every other
+  // node opens the editable side panel. A single click opens the read-only
+  // preview only after PREVIEW_DELAY_MS so a (possibly slow) second click wins.
+  const DOUBLE_CLICK_MS = 300;
+  const PREVIEW_DELAY_MS = 350;
 
-  // Double click -> open linked canvas, else editable side panel.
-  const handleNodeDoubleClick = useCallback(
+  const handleNodeClick = useCallback(
     (e, node) => {
-      clearTimeout(clickTimer.current);
-      setPreviewNodeId(null);
       const d = node.data || {};
-      // In edit mode a linked-canvas node behaves like any other node: open its
-      // side panel (so it can be deleted or re-linked). Outside edit mode a
-      // double click keeps navigating into the linked canvas.
-      if (d.linked_canvas_id && !editMode) {
-        onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
+      const now = Date.now();
+      const last = lastNodeClickRef.current;
+      lastNodeClickRef.current = { id: node.id, time: now };
+      const isDouble = last.id === node.id && now - last.time <= DOUBLE_CLICK_MS;
+
+      if (isDouble) {
+        clearTimeout(clickTimer.current);
+        setPreviewNodeId(null);
+        if (d.linked_canvas_id && !editMode) {
+          onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
+          return;
+        }
+        setSelectedNodeId(node.id);
+        const sx = node.position.x * zoom + viewport.x;
+        const available = window.innerWidth - sx - 60;
+        setPanelWidth(Math.max(280, Math.min(520, available)));
         return;
       }
-      setSelectedNodeId(node.id);
-      // Default panel width depends on where the node sits on screen.
-      const sx = node.position.x * zoom + viewport.x;
-      const available = window.innerWidth - sx - 60;
-      setPanelWidth(Math.max(280, Math.min(520, available)));
+
+      // Single click (linked-canvas nodes are skipped: only a double click navigates).
+      if (d.linked_canvas_id) return;
+      clearTimeout(clickTimer.current);
+      clickTimer.current = setTimeout(() => {
+        setPreviewNodeId(node.id);
+        setSelectedNodeId(null);
+      }, PREVIEW_DELAY_MS);
     },
-    [zoom, viewport.x, onOpenCanvas, editMode]
+    [editMode, onOpenCanvas, zoom, viewport.x]
   );
 
   useEffect(() => {
@@ -1538,9 +1555,20 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     };
   }
 
+  const openSidePanel = () => {
+    if (!previewNode) return;
+    clearTimeout(clickTimer.current);
+    setPreviewNodeId(null);
+    setSelectedNodeId(previewNode.id);
+    const base = vertical ? (verticalPositions.get(previewNode.id) || previewNode.position) : previewNode.position;
+    const sx = base.x * compress * zoom + viewport.x;
+    const available = window.innerWidth - sx - 60;
+    setPanelWidth(Math.max(280, Math.min(520, available)));
+  };
+
   return (
     <div
-      className={`canvas-shell${editMode ? ' edit-mode' : ''}${fullscreenMode ? ' fullscreen-mode' : ''}${focusMode ? ' focus-mode' : ''}${floatingControlsVisible ? '' : ' controls-hidden'}`}
+      className={`canvas-shell${editMode ? ' edit-mode' : ''}${fullscreenMode ? ' fullscreen-mode' : ''}${focusMode ? ' focus-mode' : ''}${darkMode ? ' dark-mode' : ''}${floatingControlsVisible ? '' : ' controls-hidden'}`}
       onPointerDown={handleShellPointerDown}
     >
       <div className="canvas-topbar">
@@ -1570,6 +1598,21 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
           aria-pressed={nodesLocked}
         >
           <span aria-hidden="true">{nodesLocked ? '🔒' : '🔓'}</span>
+        </button>
+        <button
+          className={`btn icon-btn dark-mode-toggle${darkMode ? ' icon-btn-active' : ''}`}
+          onClick={() => {
+            setDarkMode((v) => {
+              const next = !v;
+              try { localStorage.setItem('canvas_dark_mode', next ? '1' : '0'); } catch (e) { /* ignore */ }
+              return next;
+            });
+          }}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-pressed={darkMode}
+        >
+          <span aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
         </button>
         <button
           className={`btn icon-btn tools-toggle${toolsOpen ? ' tools-toggle-open' : ''}`}
@@ -1622,7 +1665,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onNodeClick={handleNodeClick}
-            onNodeDoubleClick={handleNodeDoubleClick}
             onNodeMouseEnter={(e, node) => setHoveredNodeId(node.id)}
             onNodeMouseLeave={() => setHoveredNodeId(null)}
             onNodeDragStart={handleNodeDragStart}
@@ -1641,12 +1683,13 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             nodesDraggable={canEdit && !freezeNodes && !alignMode && !connectMode && !vertical && compress === 1}
             nodesConnectable={canEdit && (!editMode || connectMode)}
           >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : '#cbd5e1'} />
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={editMode ? '#f59e0b' : darkMode ? '#444c56' : '#cbd5e1'} />
             <MiniMap
               pannable
               zoomable
-              nodeColor={(n) => (n.data && n.data.isRoot ? '#1a73e8' : '#aecbfa')}
-              maskColor="rgba(241,245,249,0.7)"
+              nodeColor={(n) => (n.data && n.data.isRoot ? (darkMode ? '#539bf5' : '#1a73e8') : darkMode ? '#768390' : '#aecbfa')}
+              maskColor={darkMode ? 'rgba(28,33,40,0.75)' : 'rgba(241,245,249,0.7)'}
+              bgColor={darkMode ? '#22272e' : '#ffffff'}
             />
           </ReactFlow>
 
@@ -1741,6 +1784,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               top={previewStyle.top}
               onClose={closePanels}
               onChanged={load}
+              onOpenSidePanel={openSidePanel}
               readOnly={!canEdit}
             />
           )}

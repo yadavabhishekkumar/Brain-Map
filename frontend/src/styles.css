@@ -3621,6 +3621,20 @@ mark {
   justify-content: center;
 }
 
+.home-tab-add-input {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.home-tab-add-input .home-tab-input {
+  width: 118px;
+  padding: 8px 12px;
+  border: 1px solid var(--home-border);
+  border-radius: 999px;
+  background: var(--home-surface);
+}
+
 .home-tab-add:hover {
   border-color: rgba(168, 85, 247, 0.7);
   color: #fff;
@@ -3851,6 +3865,50 @@ mark {
   background: rgba(139, 92, 246, 0.24);
 }
 
+.home-card-linked {
+  box-shadow: inset 3px 0 0 0 rgba(139, 92, 246, 0.55);
+}
+
+.home-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.home-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e9d5ff;
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.home-link-chip:hover {
+  background: rgba(139, 92, 246, 0.26);
+}
+
+.home-link-in {
+  color: #99f6e4;
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.home-link-in:hover {
+  background: rgba(20, 184, 166, 0.24);
+}
+
 .home-extra {
   margin-top: 28px;
 }
@@ -4066,5 +4124,223 @@ mark {
   .home-epaper-cta {
     display: none;
   }
+}
+
+/* ============================================================
+   Canvas dark mode — eye-friendly dark reading theme
+   (GitHub-Dark-inspired: soft charcoal, no pure black/white)
+   ============================================================ */
+.canvas-shell.dark-mode {
+  --bg: #1c2128;
+  --surface: #22272e;
+  --border: #373e47;
+  --text: #cdd9e5;
+  --muted: #8b98a5;
+  --primary: #539bf5;
+  --primary-hover: #6cb2f8;
+  --danger: #f47067;
+  --accent: #57ab5a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 3px rgba(83, 155, 245, 0.3);
+
+  background: #1c2128;
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .canvas-topbar {
+  background: #22272e;
+  border-bottom-color: #373e47;
+}
+
+.canvas-shell.dark-mode .canvas-title {
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .canvas-body,
+.canvas-shell.dark-mode .canvas-flow,
+.canvas-shell.dark-mode .react-flow {
+  background: #1c2128;
+}
+
+.canvas-shell.dark-mode .icon-btn {
+  background: #2d333b;
+  border-color: #444c56;
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .icon-btn:hover {
+  background: #373e47;
+}
+
+.canvas-shell.dark-mode .icon-btn-active,
+.canvas-shell.dark-mode .tools-toggle-open {
+  background: #539bf5;
+  border-color: #539bf5;
+  color: #fff;
+}
+
+.canvas-shell.dark-mode .canvas-parent-btn {
+  color: #e3b341;
+  border-color: #d29922;
+  background: #2a2620;
+}
+
+.canvas-shell.dark-mode .canvas-parent-btn:hover {
+  background: #352d18;
+  border-color: #e3b341;
+}
+
+.canvas-shell.dark-mode .tool-icon {
+  background: #2d333b;
+  border-color: #444c56;
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .tool-icon:hover {
+  background: #373e47;
+}
+
+.canvas-shell.dark-mode .tool-icon-active {
+  background: #539bf5;
+  border-color: #539bf5;
+  color: #fff;
+}
+
+.canvas-shell.dark-mode .mind-node {
+  background: #2d333b;
+  border-color: #444c56;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.canvas-shell.dark-mode .mind-node:hover {
+  border-color: #539bf5;
+}
+
+.canvas-shell.dark-mode .mind-node-selected {
+  border-color: #539bf5;
+  box-shadow: 0 0 0 3px rgba(83, 155, 245, 0.28);
+}
+
+.canvas-shell.dark-mode .mind-node-label {
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .mind-node-badge {
+  background: rgba(83, 155, 245, 0.2);
+  color: #9ecbff;
+}
+
+.canvas-shell.dark-mode .mind-node-link {
+  border-color: #d29922;
+  background: #2a2620;
+}
+
+.canvas-shell.dark-mode .mind-node-link .mind-node-label {
+  color: #e3b341;
+}
+
+.canvas-shell.dark-mode .mind-handle {
+  background: #539bf5;
+  border-color: #22272e;
+}
+
+.canvas-shell.dark-mode .react-flow__edge-path {
+  stroke: #768390;
+}
+
+.canvas-shell.dark-mode .react-flow__edge-text {
+  fill: #8b98a5;
+}
+
+.canvas-shell.dark-mode .react-flow__controls {
+  background: #22272e;
+  border-color: #373e47;
+}
+
+.canvas-shell.dark-mode .react-flow__controls-button {
+  background: #2d333b;
+  border-bottom-color: #373e47;
+  color: #cdd9e5;
+}
+
+.canvas-shell.dark-mode .react-flow__controls-button:hover {
+  background: #373e47;
+}
+
+.canvas-shell.dark-mode .react-flow__attribution {
+  background: rgba(28, 33, 40, 0.8);
+  color: #8b98a5;
+}
+
+.canvas-shell.dark-mode .node-preview {
+  background: #22272e;
+  border-color: #373e47;
+}
+
+.canvas-shell.dark-mode .node-preview .muted {
+  color: #8b98a5;
+}
+
+.canvas-shell.dark-mode .node-editor {
+  background: #22272e;
+  border-left-color: #373e47;
+}
+
+.canvas-shell.dark-mode .merge-choice {
+  background: #2d333b;
+}
+
+.canvas-shell.dark-mode .attachment-thumb {
+  background: #2d333b;
+}
+
+.canvas-shell.dark-mode .tabular-view {
+  background: #1c2128;
+}
+
+.canvas-shell.dark-mode .tabular-cell {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.canvas-shell.dark-mode .tabular-cell-desc {
+  color: #8b98a5;
+}
+
+.canvas-shell.dark-mode .tabular-cell-link {
+  color: #539bf5;
+}
+
+.canvas-shell.dark-mode .btn:hover {
+  background: #373e47;
+  border-color: #444c56;
+}
+
+.canvas-shell.dark-mode .btn-primary {
+  background: #539bf5;
+  border-color: #539bf5;
+  color: #fff;
+}
+
+.canvas-shell.dark-mode .btn-primary:hover {
+  background: #6cb2f8;
+  border-color: #6cb2f8;
+}
+
+.canvas-shell.dark-mode .btn-danger {
+  color: #f47067;
+  border-color: #f47067;
+}
+
+.canvas-shell.dark-mode .btn-danger:hover {
+  background: #4a1e1a;
+  border-color: #f47067;
+}
+
+.canvas-shell.dark-mode .btn-ghost {
+  color: #539bf5;
+}
+
+.canvas-shell.dark-mode .btn-ghost:hover {
+  background: rgba(83, 155, 245, 0.15);
 }
 

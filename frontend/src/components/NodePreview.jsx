@@ -3,7 +3,7 @@ import { api } from '../api';
 import { renderMarkdown } from '../markdown';
 import MicButton from './MicButton';
 
-function NodePreview({ node, left, top, onClose, onChanged, readOnly }) {
+function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, readOnly }) {
   const content = (node.data && node.data.content) || '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -36,6 +36,11 @@ function NodePreview({ node, left, top, onClose, onChanged, readOnly }) {
         {!editing && !readOnly && (
           <button className="btn btn-sm node-preview-edit" onClick={startEdit} title="Edit" aria-label="Edit">
             ✏️
+          </button>
+        )}
+        {onOpenSidePanel && (
+          <button className="btn btn-sm node-preview-open" onClick={onOpenSidePanel} title="Open side panel" aria-label="Open side panel">
+            📑
           </button>
         )}
         <button className="btn btn-ghost node-preview-close" onClick={onClose} title="Close (Esc)">
