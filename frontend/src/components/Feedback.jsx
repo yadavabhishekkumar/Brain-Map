@@ -20,6 +20,8 @@ export default function Feedback({ onBack }) {
   const [composing, setComposing] = useState(false);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
 
   const load = async () => {
     try {
@@ -48,6 +50,41 @@ export default function Feedback({ onBack }) {
       alert(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEdit = (f) => {
+    setEditingId(f.id);
+    setEditText(f.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const saveEdit = async () => {
+    if (!editText.trim() || saving || !editingId) return;
+    setSaving(true);
+    try {
+      await api.updateFeedback(editingId, editText.trim());
+      setEditingId(null);
+      setEditText('');
+      await load();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (f) => {
+    if (!window.confirm('Delete this feedback?')) return;
+    try {
+      await api.deleteFeedback(f.id);
+      await load();
+    } catch (e) {
+      alert(e.message);
     }
   };
 
@@ -105,8 +142,34 @@ export default function Feedback({ onBack }) {
           ) : (
             items.map((f) => (
               <article key={f.id} className="feedback-item">
-                <div className="feedback-item-text">{f.content}</div>
-                <div className="feedback-item-date">{formatDate(f.created_at)}</div>
+                <div className="feedback-item-head">
+                  <div className="feedback-item-date">{formatDate(f.created_at)}</div>
+                  <div className="feedback-item-actions">
+                    <button className="feedback-mini" onClick={() => startEdit(f)} title="Edit" aria-label="Edit">✏️</button>
+                    <button className="feedback-mini feedback-mini-danger" onClick={() => remove(f)} title="Delete" aria-label="Delete">🗑</button>
+                  </div>
+                </div>
+                {editingId === f.id ? (
+                  <div className="feedback-edit">
+                    <div className="voice-field">
+                      <textarea
+                        rows={3}
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        autoFocus
+                      />
+                      <MicButton onText={(t) => setEditText((v) => (v ? v + ' ' + t : t))} />
+                    </div>
+                    <div className="feedback-edit-actions">
+                      <button className="home-btn home-btn-primary" onClick={saveEdit} disabled={saving || !editText.trim()}>
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button className="home-btn home-btn-ghost" onClick={cancelEdit}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="feedback-item-text">{f.content}</div>
+                )}
               </article>
             ))
           )}
