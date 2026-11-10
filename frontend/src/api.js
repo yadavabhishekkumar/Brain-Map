@@ -69,6 +69,9 @@ export const api = {
   setFeedbackCompleted: (id, completed) =>
     request(`/feedback/${id}/completed`, { method: 'PATCH', body: JSON.stringify({ completed }) }),
 
+  downloadBackup: () => request('/backup'),
+  restoreBackup: (data) => request('/backup/restore', { method: 'POST', body: JSON.stringify(data) }),
+
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteNode: (id) => request(`/nodes/${id}`, { method: 'DELETE' }),
