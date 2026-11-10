@@ -20,7 +20,24 @@ router.get('/', async (req, res, next) => {
               c.created_at, c.updated_at,
               (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count,
               (SELECT count(*)::int FROM attachments a WHERE a.canvas_id = c.id) AS attachment_count,
-              (SELECT n.canvas_id FROM nodes n WHERE n.linked_canvas_id = c.id LIMIT 1) AS linked_from_canvas_id
+              COALESCE((
+                SELECT jsonb_agg(obj)
+                FROM (
+                  SELECT DISTINCT jsonb_build_object('id', c2.id, 'name', c2.name) AS obj
+                  FROM nodes n
+                  JOIN canvases c2 ON c2.id = n.linked_canvas_id
+                  WHERE n.canvas_id = c.id
+                ) s
+              ), '[]'::jsonb) AS linked_to,
+              COALESCE((
+                SELECT jsonb_agg(obj)
+                FROM (
+                  SELECT DISTINCT jsonb_build_object('id', c3.id, 'name', c3.name) AS obj
+                  FROM nodes n
+                  JOIN canvases c3 ON c3.id = n.canvas_id
+                  WHERE n.linked_canvas_id = c.id
+                ) s
+              ), '[]'::jsonb) AS linked_from
        FROM canvases c
        LEFT JOIN users u ON u.id = c.owner_id
        WHERE c.owner_id IS NULL OR c.owner_id = $1 OR c.is_public
