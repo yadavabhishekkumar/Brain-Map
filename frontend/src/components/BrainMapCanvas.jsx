@@ -395,6 +395,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const { setCenter, fitView, zoomIn } = useReactFlow();
   const didFit = useRef(false);
   const clickTimer = useRef(null);
+  const lastNodeClickRef = useRef({ id: null, time: 0 });
   const paneClickTimer = useRef(null);
   const baselineRef = useRef(null);
   const tempIdRef = useRef(0);
@@ -1465,38 +1466,45 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     }
   }, [closePanels, zoomIn, zoomLock]);
 
-  // Single click -> read-only preview (after a short delay so a double-click wins).
-  // Linked-canvas nodes are skipped: only double-click navigates into them.
-  const handleNodeClick = useCallback((e, node) => {
-    const d = node.data || {};
-    if (d.linked_canvas_id) return;
-    clearTimeout(clickTimer.current);
-    clickTimer.current = setTimeout(() => {
-      setPreviewNodeId(node.id);
-      setSelectedNodeId(null);
-    }, 220);
-  }, []);
+  // Click handling with a manual, mobile-friendly double-click detector. Two
+  // clicks on the same node within DOUBLE_CLICK_MS (500ms) count as a double
+  // click: linked-canvas nodes navigate into the linked canvas, every other
+  // node opens the editable side panel. A single click opens the read-only
+  // preview only after PREVIEW_DELAY_MS so a (possibly slow) second click wins.
+  const DOUBLE_CLICK_MS = 500;
+  const PREVIEW_DELAY_MS = 550;
 
-  // Double click -> open linked canvas, else editable side panel.
-  const handleNodeDoubleClick = useCallback(
+  const handleNodeClick = useCallback(
     (e, node) => {
-      clearTimeout(clickTimer.current);
-      setPreviewNodeId(null);
       const d = node.data || {};
-      // In edit mode a linked-canvas node behaves like any other node: open its
-      // side panel (so it can be deleted or re-linked). Outside edit mode a
-      // double click keeps navigating into the linked canvas.
-      if (d.linked_canvas_id && !editMode) {
-        onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
+      const now = Date.now();
+      const last = lastNodeClickRef.current;
+      lastNodeClickRef.current = { id: node.id, time: now };
+      const isDouble = last.id === node.id && now - last.time <= DOUBLE_CLICK_MS;
+
+      if (isDouble) {
+        clearTimeout(clickTimer.current);
+        setPreviewNodeId(null);
+        if (d.linked_canvas_id && !editMode) {
+          onOpenCanvas(d.linked_canvas_id, d.linked_canvas_name || d.label);
+          return;
+        }
+        setSelectedNodeId(node.id);
+        const sx = node.position.x * zoom + viewport.x;
+        const available = window.innerWidth - sx - 60;
+        setPanelWidth(Math.max(280, Math.min(520, available)));
         return;
       }
-      setSelectedNodeId(node.id);
-      // Default panel width depends on where the node sits on screen.
-      const sx = node.position.x * zoom + viewport.x;
-      const available = window.innerWidth - sx - 60;
-      setPanelWidth(Math.max(280, Math.min(520, available)));
+
+      // Single click (linked-canvas nodes are skipped: only a double click navigates).
+      if (d.linked_canvas_id) return;
+      clearTimeout(clickTimer.current);
+      clickTimer.current = setTimeout(() => {
+        setPreviewNodeId(node.id);
+        setSelectedNodeId(null);
+      }, PREVIEW_DELAY_MS);
     },
-    [zoom, viewport.x, onOpenCanvas, editMode]
+    [editMode, onOpenCanvas, zoom, viewport.x]
   );
 
   useEffect(() => {
@@ -1537,6 +1545,17 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       top: Math.max(44, Math.min(sy - 24, Math.max(44, window.innerHeight - 440))),
     };
   }
+
+  const openSidePanel = () => {
+    if (!previewNode) return;
+    clearTimeout(clickTimer.current);
+    setPreviewNodeId(null);
+    setSelectedNodeId(previewNode.id);
+    const base = vertical ? (verticalPositions.get(previewNode.id) || previewNode.position) : previewNode.position;
+    const sx = base.x * compress * zoom + viewport.x;
+    const available = window.innerWidth - sx - 60;
+    setPanelWidth(Math.max(280, Math.min(520, available)));
+  };
 
   return (
     <div
@@ -1622,7 +1641,6 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onNodeClick={handleNodeClick}
-            onNodeDoubleClick={handleNodeDoubleClick}
             onNodeMouseEnter={(e, node) => setHoveredNodeId(node.id)}
             onNodeMouseLeave={() => setHoveredNodeId(null)}
             onNodeDragStart={handleNodeDragStart}
@@ -1741,6 +1759,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
               top={previewStyle.top}
               onClose={closePanels}
               onChanged={load}
+              onOpenSidePanel={openSidePanel}
               readOnly={!canEdit}
             />
           )}
