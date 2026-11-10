@@ -4673,6 +4673,33 @@ mark {
   color: #57ab5a;
 }
 
+.offline-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.canvas-offline-banner {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #1f2937;
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
 .feedback-status {
   font-size: 12px;
   font-weight: 700;

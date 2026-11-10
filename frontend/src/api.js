@@ -33,6 +33,7 @@ export const api = {
   updateCanvas: (id, data) => request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCanvas: (id) => request(`/canvases/${id}`, { method: 'DELETE' }),
   forkCanvas: (id) => request(`/canvases/${id}/fork`, { method: 'POST' }),
+  syncCanvas: (id, data) => request(`/canvases/${id}/sync`, { method: 'POST', body: JSON.stringify(data) }),
   setCanvasVisibility: (id, isPublic) =>
     request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_public: isPublic }) }),
 
@@ -68,6 +69,9 @@ export const api = {
     request(`/feedback/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   setFeedbackCompleted: (id, completed) =>
     request(`/feedback/${id}/completed`, { method: 'PATCH', body: JSON.stringify({ completed }) }),
+
+  downloadBackup: () => request('/backup'),
+  restoreBackup: (data) => request('/backup/restore', { method: 'POST', body: JSON.stringify(data) }),
 
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

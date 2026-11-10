@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { saveMirror, loadMirror } from '../localdb';
 import MicButton from './MicButton';
 import { AI_MODELS, getAiModel, setAiModel } from '../aiModel';
 
@@ -60,6 +61,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [aiModel, setAiModelState] = useState(getAiModel());
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -92,8 +94,19 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
       }
       setCanvases(cs);
       setCategories(cats);
+      setOffline(false);
+      // Keep the local IndexedDB mirror up to date (best-effort).
+      saveMirror({ canvases: cs, categories: cats });
     } catch (e) {
-      alert(e.message);
+      const snap = await loadMirror();
+      if (snap && (snap.canvases || snap.categories)) {
+        setOffline(true);
+        setCanvases(snap.canvases || []);
+        setCategories(snap.categories || []);
+      } else {
+        setOffline(true);
+        alert(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -328,6 +341,42 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     }
   };
 
+  const fileInputRef = useRef(null);
+
+  const handleBackup = async () => {
+    try {
+      const data = await api.downloadBackup();
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `upsc-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      alert('Backup failed: ' + e.message);
+    }
+  };
+
+  const handleRestoreFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!window.confirm('Restore will ADD this backup\u2019s data to your current account. Continue?')) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const r = await api.restoreBackup(data);
+      const s = r.restored || {};
+      alert(`Restored: ${s.canvases || 0} canvases, ${s.nodes || 0} nodes, ${s.edges || 0} edges, ${s.feedback || 0} feedback, ${s.attachments || 0} attachments.`);
+      await load();
+    } catch (e) {
+      alert('Restore failed: ' + e.message);
+    }
+  };
+
   return (
     <div className="home">
       <div className="home-aurora" aria-hidden="true">
@@ -337,6 +386,11 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
       </div>
 
       <div className="home-shell">
+        {offline && (
+          <div className="offline-banner">
+            ⚠️ Offline — showing your saved local copy
+          </div>
+        )}
         <header className="home-topbar">
           <div className="home-brand">
             <div className="home-logo">🧠</div>
@@ -380,6 +434,12 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                     )}
                     <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); onOpenFeedback(); }}>
                       💬 Feedback
+                    </button>
+                    <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); handleBackup(); }}>
+                      💾 Backup data
+                    </button>
+                    <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); fileInputRef.current && fileInputRef.current.click(); }}>
+                      📥 Restore data
                     </button>
                     <button className="home-dropdown-item" onClick={() => { setMenuOpen(false); openEdit(); }}>
                       ✏️ Edit profile
@@ -641,6 +701,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
           </div>
         </div>
       )}
+      <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleRestoreFile} />
     </div>
   );
 }

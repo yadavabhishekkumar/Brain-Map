@@ -5,6 +5,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { api } from '../api';
+import { saveCanvasContent, loadCanvasContent } from '../localdb';
 import MindMapNode from './MindMapNode';
 import NodeEditor from './NodeEditor';
 import SearchBar from './SearchBar';
@@ -422,6 +423,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [compress, setCompress] = useState(1);
   const [nodesLocked, setNodesLocked] = useState(true);
   const [canEdit, setCanEdit] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const verticalPositions = useMemo(() => (vertical ? layoutVertical(nodes) : null), [vertical, nodes]);
   const alignBaselineRef = useRef(null);
@@ -455,8 +457,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   }, []);
 
   const load = useCallback(async () => {
-    try {
-      const data = await api.getCanvas(canvasId);
+    const applyData = (data) => {
       setNodes(data.nodes.map(toNode));
       setEdges(
         data.edges.map((e) => ({
@@ -468,9 +469,28 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       );
       setParentCanvases(data.parentCanvases || []);
       setCanEdit(!!(data.canvas && data.canvas.can_edit));
+    };
+
+    try {
+      // Push any offline edits for this canvas before loading fresh.
+      const pending = await loadCanvasContent(canvasId);
+      if (pending && pending.pendingSync && pending.nodes) {
+        await api.syncCanvas(canvasId, { nodes: pending.nodes, edges: pending.edges || [] });
+      }
+      const data = await api.getCanvas(canvasId);
+      applyData(data);
+      setOffline(false);
+      // Mirror this canvas locally (clearing any pending-sync marker).
+      saveCanvasContent(canvasId, { ...data, pendingSync: false });
     } catch (e) {
-      console.error(e);
-      alert('Failed to load canvas: ' + e.message);
+      const local = await loadCanvasContent(canvasId);
+      if (local && local.nodes) {
+        applyData(local);
+        setOffline(true); // editable offline for canvases you own
+      } else {
+        console.error(e);
+        alert('Failed to load canvas: ' + e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -765,9 +785,59 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [pushUndo, setNodes, viewport]
   );
 
+  const persistLocalState = useCallback(async () => {
+    const existing = (await loadCanvasContent(canvasId)) || {};
+    const genId = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+    const idMap = new Map();
+    const mapId = (id) => {
+      if (!id) return null;
+      if (!String(id).startsWith('tmp-')) return id;
+      if (!idMap.has(id)) idMap.set(id, genId());
+      return idMap.get(id);
+    };
+    const rawNodes = nodes.map((n) => ({
+      id: mapId(n.id),
+      parent_id: mapId(n.data && n.data.parent_id),
+      label: n.data.label,
+      content: n.data.content || '',
+      x: n.position.x,
+      y: n.position.y,
+      depth: n.data.depth || 0,
+      linked_canvas_id: (n.data && n.data.linked_canvas_id) || null,
+    }));
+    const rawEdges = edges.map((e) => ({
+      id: e.id,
+      source_id: mapId(e.source),
+      target_id: mapId(e.target),
+      label: e.label || '',
+    }));
+    await saveCanvasContent(canvasId, {
+      canvas: { ...(existing.canvas || {}), id: canvasId, name: canvasName, can_edit: true },
+      nodes: rawNodes,
+      edges: rawEdges,
+      parentCanvases: existing.parentCanvases || [],
+      pendingSync: true,
+    });
+  }, [nodes, edges, canvasId, canvasName]);
+
   const saveEdit = useCallback(async () => {
     const baseline = baselineRef.current;
     if (!baseline) return;
+    if (!navigator.onLine) {
+      await persistLocalState();
+      exitEditMode();
+      setSelectedNodeId(null);
+      setOffline(true);
+      await load();
+      return;
+    }
     try {
       const baseIds = new Set(baseline.nodes.map((n) => n.id));
       const currIds = new Set(nodes.map((n) => n.id));
@@ -834,9 +904,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       setSelectedNodeId(null);
       await load();
     } catch (e) {
-      alert(e.message || 'Failed to save changes');
+      // Offline / server unreachable: keep changes locally for a later sync.
+      await persistLocalState();
+      exitEditMode();
+      setSelectedNodeId(null);
+      setOffline(true);
+      await load();
     }
-  }, [nodes, edges, canvasId, exitEditMode, load]);
+  }, [nodes, edges, canvasId, exitEditMode, load, persistLocalState]);
 
   const cancelEdit = useCallback(() => {
     const baseline = baselineRef.current;
@@ -1656,6 +1731,11 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
       </div>
 
       <div className="canvas-body">
+        {offline && (
+          <div className="canvas-offline-banner">
+            ⚠️ Offline — saved locally
+          </div>
+        )}
         {tabularMode ? (
           <TabularView nodes={nodes} onOpenCanvas={onOpenCanvas} />
         ) : (

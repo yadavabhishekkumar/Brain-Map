@@ -20,7 +20,7 @@ async function main() {
 
   const app = express();
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '200mb' }));
 
   // Attach req.user when a valid Bearer token is present (all routes can read it).
   app.use(authOptional);
@@ -33,6 +33,7 @@ async function main() {
   app.use('/api/canvases', require('./routes/canvases'));
   app.use('/api/categories', require('./routes/categories'));
   app.use('/api/feedback', require('./routes/feedback'));
+  app.use('/api/backup', require('./routes/backup'));
   app.use('/api/nodes', require('./routes/nodes'));
   app.use('/api/edges', require('./routes/edges'));
   app.use('/api/attachments', require('./routes/attachments'));

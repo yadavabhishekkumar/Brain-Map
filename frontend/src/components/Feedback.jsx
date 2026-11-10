@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { getAiModel } from '../aiModel';
+import { saveMirror, loadMirror } from '../localdb';
 import MicButton from './MicButton';
 
 function formatDate(iso) {
@@ -25,6 +26,7 @@ function toYmd(d) {
 export default function Feedback({ onBack }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [composing, setComposing] = useState(false);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -47,8 +49,17 @@ export default function Feedback({ onBack }) {
     try {
       const rows = await api.listFeedback();
       setItems(rows);
+      setOffline(false);
+      saveMirror({ feedback: rows });
     } catch (e) {
-      alert(e.message);
+      const snap = await loadMirror();
+      if (snap && snap.feedback) {
+        setOffline(true);
+        setItems(snap.feedback);
+      } else {
+        setOffline(true);
+        alert(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -218,6 +229,12 @@ export default function Feedback({ onBack }) {
           <h1 className="feedback-title">Feedback</h1>
           <button className="home-btn home-btn-ghost" onClick={openExport} disabled={items.length === 0}>📤 Export</button>
         </header>
+
+        {offline && (
+          <div className="offline-banner">
+            ⚠️ Offline — showing your saved local copy
+          </div>
+        )}
 
         <section className="feedback-compose">
           {composing ? (

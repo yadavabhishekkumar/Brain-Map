@@ -426,4 +426,74 @@ router.post('/:id/fork', async (req, res, next) => {
   }
 });
 
+// Sync a canvas to the provided full node/edge state (used for offline edits).
+// New records keep their client-generated UUIDs so parent/edge references stay intact.
+router.post('/:id/sync', async (req, res, next) => {
+  try {
+    const err = await requireCanvasOwner(req.user, req.params.id);
+    if (err) return res.status(err.status).json({ error: err.error });
+    const canvasId = req.params.id;
+    const nodes = Array.isArray(req.body.nodes) ? req.body.nodes : [];
+    const edges = Array.isArray(req.body.edges) ? req.body.edges : [];
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    const nodeIds = [];
+    const sorted = nodes.slice().sort((a, b) => ((a.depth || 0) - (b.depth || 0)));
+    for (const n of sorted) {
+      const id = n.id && UUID_RE.test(String(n.id)) ? n.id : uuid();
+      nodeIds.push(id);
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth, linked_canvas_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (id) DO UPDATE SET
+           canvas_id = EXCLUDED.canvas_id,
+           parent_id = EXCLUDED.parent_id,
+           label = EXCLUDED.label,
+           content = EXCLUDED.content,
+           x = EXCLUDED.x,
+           y = EXCLUDED.y,
+           depth = EXCLUDED.depth,
+           linked_canvas_id = EXCLUDED.linked_canvas_id,
+           updated_at = now()`,
+        [id, canvasId, n.parent_id || null, (n.label || '').toString().slice(0, 300), (n.content || '').toString(), Number(n.x) || 0, Number(n.y) || 0, Number(n.depth) || 0, n.linked_canvas_id || null]
+      );
+      try { await indexNode(id); } catch (e) { /* Elasticsearch is optional */ }
+    }
+
+    if (nodeIds.length) {
+      await pool.query('DELETE FROM nodes WHERE canvas_id = $1 AND NOT (id = ANY($2::uuid[]))', [canvasId, nodeIds]);
+    } else {
+      await pool.query('DELETE FROM nodes WHERE canvas_id = $1', [canvasId]);
+    }
+
+    const edgeIds = [];
+    for (const e of edges) {
+      const id = e.id && UUID_RE.test(String(e.id)) ? e.id : uuid();
+      edgeIds.push(id);
+      await pool.query(
+        `INSERT INTO edges (id, canvas_id, source_id, target_id, label)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (id) DO UPDATE SET
+           canvas_id = EXCLUDED.canvas_id,
+           source_id = EXCLUDED.source_id,
+           target_id = EXCLUDED.target_id,
+           label = EXCLUDED.label`,
+        [id, canvasId, e.source_id, e.target_id, e.label || '']
+      );
+    }
+
+    if (edgeIds.length) {
+      await pool.query('DELETE FROM edges WHERE canvas_id = $1 AND NOT (id = ANY($2::uuid[]))', [canvasId, edgeIds]);
+    } else {
+      await pool.query('DELETE FROM edges WHERE canvas_id = $1', [canvasId]);
+    }
+
+    await pool.query('UPDATE canvases SET updated_at = now() WHERE id = $1', [canvasId]);
+
+    res.json({ synced: true, nodes: nodeIds.length, edges: edgeIds.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
