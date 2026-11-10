@@ -4344,3 +4344,182 @@ mark {
   background: rgba(83, 155, 245, 0.15);
 }
 
+/* ============================================================
+   Feedback page — dark, matches the home design
+   ============================================================ */
+.feedback-page {
+  --home-bg: #08080d;
+  --home-surface: rgba(255, 255, 255, 0.04);
+  --home-surface-2: rgba(255, 255, 255, 0.07);
+  --home-border: rgba(255, 255, 255, 0.09);
+  --home-text: #f5f5f8;
+  --home-muted: #9a9aa6;
+  --home-violet: #8b5cf6;
+  --home-pink: #ec4899;
+  --home-danger: #f87171;
+
+  position: relative;
+  min-height: 100vh;
+  background: #08080d;
+  color: var(--home-text);
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.feedback-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% -10%, rgba(139, 92, 246, 0.35), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(236, 72, 153, 0.28), transparent 45%);
+}
+
+.feedback-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 22px 24px 60px;
+}
+
+.feedback-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.feedback-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.feedback-compose {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.feedback-add {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px dotted rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cdd9e5;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-add:hover {
+  border-color: rgba(139, 92, 246, 0.9);
+  color: #fff;
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.feedback-composer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feedback-page .voice-field textarea {
+  width: 100%;
+  padding: 12px 46px 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: #f5f5f8;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 110px;
+}
+
+.feedback-page .voice-field textarea::placeholder {
+  color: #6b6b78;
+}
+
+.feedback-page .voice-field textarea:focus {
+  border-color: rgba(139, 92, 246, 0.7);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+.feedback-page .mic-btn {
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f5f5f8;
+}
+
+.feedback-page .mic-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.feedback-page .mic-btn-listening {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+.feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.feedback-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feedback-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.feedback-item-text {
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #f5f5f8;
+}
+
+.feedback-item-date {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8b98a5;
+}
+
+.feedback-empty {
+  text-align: center;
+  padding: 40px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  color: #9a9aa6;
+  font-size: 14px;
+}
+
+.feedback-empty-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
