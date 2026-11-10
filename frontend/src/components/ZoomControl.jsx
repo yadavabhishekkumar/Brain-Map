@@ -17,7 +17,6 @@ export default function ZoomControl() {
     >
       <button
         className="zoom-icon"
-        title="Zoom — hover or tap to fine-tune"
         aria-label="Toggle zoom controls"
         onClick={() => setOpen((o) => !o)}
       >
@@ -37,6 +36,7 @@ export default function ZoomControl() {
           <line x1="11" y1="8" x2="11" y2="14" />
           <line x1="8" y1="11" x2="14" y2="11" />
         </svg>
+        <span className="floating-tooltip floating-tooltip-top">Zoom</span>
       </button>
       <div className={`zoom-slider-wrap${open ? ' open' : ''}`}>
         <input

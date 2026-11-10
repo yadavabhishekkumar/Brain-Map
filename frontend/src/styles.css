@@ -611,8 +611,10 @@ select:focus {
 .mind-handle {
   width: 9px;
   height: 9px;
-  background: var(--primary);
-  border: 2px solid #fff;
+  background: transparent;
+  border: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ---------- Node editor panel ---------- */
@@ -1862,6 +1864,44 @@ mark {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.floating-btn,
+.zoom-icon {
+  position: relative;
+}
+
+.floating-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  z-index: 30;
+}
+
+.floating-tooltip-top {
+  left: 50%;
+  top: auto;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+}
+
+.floating-btn:hover .floating-tooltip,
+.floating-btn:focus-visible .floating-tooltip,
+.zoom-icon:hover .floating-tooltip,
+.zoom-icon:focus-visible .floating-tooltip {
+  opacity: 1;
 }
 
 .zoom-slider-wrap {
