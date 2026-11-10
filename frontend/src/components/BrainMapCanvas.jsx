@@ -1707,15 +1707,14 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             <button
               className="floating-btn"
               onClick={fitToScreen}
-              title="Fit screen"
               aria-label="Fit screen"
             >
               ⤢
+              <span className="floating-tooltip">Fit screen</span>
             </button>
             <button
               className={`floating-btn${fullscreenMode ? ' floating-btn-active' : ''}`}
               onClick={() => setFullscreenMode((v) => !v)}
-              title={fullscreenMode ? 'Exit Full Screen' : 'Full Screen Mode'}
               aria-label="Full Screen Mode"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1724,15 +1723,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <path d="M3 16v3a2 2 0 0 0 2 2h3" />
                 <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
               </svg>
+              <span className="floating-tooltip">{fullscreenMode ? 'Exit full screen' : 'Full screen'}</span>
             </button>
             {canEdit && (
               <button
                 className={`floating-btn${freezeNodes ? ' floating-btn-active' : ''}`}
                 onClick={() => setFreezeNodes((v) => !v)}
-                title={freezeNodes ? 'Unfreeze Nodes' : 'Freeze Nodes'}
                 aria-label="Freeze Nodes"
               >
                 ❄️
+                <span className="floating-tooltip">{freezeNodes ? 'Unfreeze nodes' : 'Freeze nodes'}</span>
               </button>
             )}
           </div>

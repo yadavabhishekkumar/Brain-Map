@@ -15,7 +15,7 @@ router.use((req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, content, status, created_at FROM feedback WHERE owner_id = $1 ORDER BY created_at DESC',
+      'SELECT id, content, status, completed, created_at FROM feedback WHERE owner_id = $1 ORDER BY created_at DESC',
       [req.user.sub]
     );
     res.json(rows);
@@ -35,7 +35,7 @@ router.post('/', async (req, res, next) => {
       req.user.sub,
       content.slice(0, 5000),
     ]);
-    const { rows } = await pool.query('SELECT id, content, status, created_at FROM feedback WHERE id = $1', [id]);
+    const { rows } = await pool.query('SELECT id, content, status, completed, created_at FROM feedback WHERE id = $1', [id]);
     res.status(201).json(rows[0]);
   } catch (e) {
     next(e);
@@ -91,7 +91,7 @@ router.put('/:id', async (req, res, next) => {
     ]);
     if (!rows[0]) return res.status(404).json({ error: 'Feedback not found' });
     await pool.query('UPDATE feedback SET content = $1 WHERE id = $2', [content.slice(0, 5000), id]);
-    const updated = await pool.query('SELECT id, content, status, created_at FROM feedback WHERE id = $1', [id]);
+    const updated = await pool.query('SELECT id, content, status, completed, created_at FROM feedback WHERE id = $1', [id]);
     res.json(updated.rows[0]);
   } catch (e) {
     next(e);
@@ -125,7 +125,25 @@ router.patch('/:id/status', async (req, res, next) => {
     ]);
     if (!rows[0]) return res.status(404).json({ error: 'Feedback not found' });
     await pool.query('UPDATE feedback SET status = $1 WHERE id = $2', [status, id]);
-    const updated = await pool.query('SELECT id, content, status, created_at FROM feedback WHERE id = $1', [id]);
+    const updated = await pool.query('SELECT id, content, status, completed, created_at FROM feedback WHERE id = $1', [id]);
+    res.json(updated.rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Set a feedback entry's completion status.
+router.patch('/:id/completed', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const completed = req.body.completed === true;
+    const { rows } = await pool.query('SELECT id FROM feedback WHERE id = $1 AND owner_id = $2', [
+      id,
+      req.user.sub,
+    ]);
+    if (!rows[0]) return res.status(404).json({ error: 'Feedback not found' });
+    await pool.query('UPDATE feedback SET completed = $1 WHERE id = $2', [completed, id]);
+    const updated = await pool.query('SELECT id, content, status, completed, created_at FROM feedback WHERE id = $1', [id]);
     res.json(updated.rows[0]);
   } catch (e) {
     next(e);

@@ -66,6 +66,8 @@ export const api = {
     request('/feedback/rephrase', { method: 'POST', body: JSON.stringify({ feedbacks, model }) }),
   setFeedbackStatus: (id, status) =>
     request(`/feedback/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  setFeedbackCompleted: (id, completed) =>
+    request(`/feedback/${id}/completed`, { method: 'PATCH', body: JSON.stringify({ completed }) }),
 
   createNode: (canvasId, data) => request(`/canvases/${canvasId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
   updateNode: (id, data) => request(`/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
