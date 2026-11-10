@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { uuid } = require('../util');
+const ai = require('../ai');
 
 const router = express.Router();
 
@@ -36,6 +37,43 @@ router.post('/', async (req, res, next) => {
     ]);
     const { rows } = await pool.query('SELECT id, content, created_at FROM feedback WHERE id = $1', [id]);
     res.status(201).json(rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Rephrase a set of feedback entries into clean, actionable developer notes.
+router.post('/rephrase', async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    const feedbacks = Array.isArray(req.body.feedbacks) ? req.body.feedbacks : [];
+    if (!feedbacks.length) return res.status(400).json({ error: 'No feedback to rephrase' });
+
+    const model = (req.body.model || 'deepseek').trim();
+    const raw = feedbacks
+      .map((f, i) => `${i + 1}. ${(f.content || '').trim()}`)
+      .filter(Boolean)
+      .join('\n\n');
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          'You turn raw user feedback into clean, concise, well-organized development notes for an app developer. ' +
+          'Rewrite the feedback as a clear numbered list of actionable requests. Remove filler and fix grammar, ' +
+          'but preserve the original intent. Return only the polished text with no extra commentary.',
+      },
+      { role: 'user', content: `Here is the raw feedback:\n\n${raw}` },
+    ];
+
+    const { content } = await ai.chatCompletion(messages, {
+      provider: model,
+      maxTokens: 8000,
+      temperature: 0.3,
+      userId: req.user && req.user.sub,
+    });
+
+    res.json({ result: content });
   } catch (e) {
     next(e);
   }

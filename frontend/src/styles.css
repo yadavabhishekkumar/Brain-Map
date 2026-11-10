@@ -4577,3 +4577,58 @@ mark {
   gap: 8px;
 }
 
+.feedback-topbar .feedback-title {
+  flex: 1;
+}
+
+.feedback-export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feedback-export-ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #f5f5f8;
+  cursor: pointer;
+  margin: 4px 0;
+}
+
+.feedback-export-ai input {
+  width: 16px;
+  height: 16px;
+  accent-color: #8b5cf6;
+}
+
+.home-modal-wide {
+  max-width: 640px;
+}
+
+.feedback-result {
+  width: 100%;
+  min-height: 240px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #f5f5f8;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  white-space: pre-wrap;
+}
+
+.feedback-result:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.7);
+}
+
+.feedback-copied {
+  font-size: 13px;
+  color: #57ab5a;
+}
+
