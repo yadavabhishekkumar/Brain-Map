@@ -34,6 +34,8 @@ export default function Feedback({ onBack }) {
   const [fromDate, setFromDate] = useState(() => toYmd(new Date(Date.now() - 24 * 60 * 60 * 1000)));
   const [toDate, setToDate] = useState(() => toYmd(new Date()));
   const [useAI, setUseAI] = useState(false);
+  const [exportApproval, setExportApproval] = useState('all');
+  const [exportCompletion, setExportCompletion] = useState('all');
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState('');
   const [resultOpen, setResultOpen] = useState(false);
@@ -116,10 +118,21 @@ export default function Feedback({ onBack }) {
     }
   };
 
+  const toggleCompleted = async (f) => {
+    try {
+      await api.setFeedbackCompleted(f.id, !f.completed);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   const openExport = () => {
     setFromDate(toYmd(new Date(Date.now() - 24 * 60 * 60 * 1000)));
     setToDate(toYmd(new Date()));
     setUseAI(false);
+    setExportApproval('all');
+    setExportCompletion('all');
     setExportError('');
     setExportOpen(true);
   };
@@ -131,7 +144,12 @@ export default function Feedback({ onBack }) {
     if (from > to) { setExportError('Start date must be before end date.'); return; }
     const filtered = items.filter((f) => {
       const t = new Date(f.created_at);
-      return t >= from && t <= to;
+      const inDate = t >= from && t <= to;
+      const inApproval = exportApproval === 'all' || f.status === exportApproval;
+      const inCompletion =
+        exportCompletion === 'all' ||
+        (exportCompletion === 'completed' ? !!f.completed : !f.completed);
+      return inDate && inApproval && inCompletion;
     });
     if (!filtered.length) { setExportError('No feedback in this date range.'); return; }
 
@@ -247,13 +265,22 @@ export default function Feedback({ onBack }) {
             items.map((f) => (
               <article key={f.id} className="feedback-item">
                 <div className="feedback-item-head">
-                  <button
-                    className={`feedback-status${f.status === 'approved' ? ' feedback-status-approved' : ''}`}
-                    onClick={() => toggleStatus(f)}
-                    title="Toggle approval status"
-                  >
-                    {f.status === 'approved' ? '✓ Approved' : 'Unapproved'}
-                  </button>
+                  <div className="feedback-badges">
+                    <button
+                      className={`feedback-status${f.status === 'approved' ? ' feedback-status-approved' : ''}`}
+                      onClick={() => toggleStatus(f)}
+                      title="Toggle approval status"
+                    >
+                      {f.status === 'approved' ? '✓ Approved' : 'Unapproved'}
+                    </button>
+                    <button
+                      className={`feedback-completed${f.completed ? ' feedback-completed-done' : ''}`}
+                      onClick={() => toggleCompleted(f)}
+                      title="Toggle completion status"
+                    >
+                      {f.completed ? '✓ Completed' : 'Not completed'}
+                    </button>
+                  </div>
                   <div className="feedback-item-actions">
                     <button className="feedback-mini" onClick={() => startEdit(f)} title="Edit" aria-label="Edit">✏️</button>
                     <button className="feedback-mini feedback-mini-danger" onClick={() => remove(f)} title="Delete" aria-label="Delete">🗑</button>
@@ -298,6 +325,22 @@ export default function Feedback({ onBack }) {
             <div className="feedback-export-field">
               <label className="home-label" htmlFor="export-to">End date</label>
               <input id="export-to" className="home-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+            <div className="feedback-export-field">
+              <label className="home-label" htmlFor="export-approval">Approval status</label>
+              <select id="export-approval" className="home-input" value={exportApproval} onChange={(e) => setExportApproval(e.target.value)}>
+                <option value="all">All</option>
+                <option value="approved">Approved</option>
+                <option value="unapproved">Unapproved</option>
+              </select>
+            </div>
+            <div className="feedback-export-field">
+              <label className="home-label" htmlFor="export-completion">Completion status</label>
+              <select id="export-completion" className="home-input" value={exportCompletion} onChange={(e) => setExportCompletion(e.target.value)}>
+                <option value="all">All</option>
+                <option value="completed">Completed</option>
+                <option value="not_completed">Not completed</option>
+              </select>
             </div>
             <label className="feedback-export-ai">
               <input type="checkbox" checked={useAI} onChange={(e) => setUseAI(e.target.checked)} />

@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'unapproved',
+  completed BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -142,6 +143,9 @@ async function initSchema() {
   );
   await pool.query(
     `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'unapproved'`
+  );
+  await pool.query(
+    `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS completed BOOLEAN NOT NULL DEFAULT false`
   );
 }
 
