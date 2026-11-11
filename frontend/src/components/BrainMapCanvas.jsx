@@ -9,6 +9,7 @@ import MindMapNode from './MindMapNode';
 import NodeEditor from './NodeEditor';
 import SearchBar from './SearchBar';
 import LinkCanvasModal from './LinkCanvasModal';
+import ImportCanvasModal from './ImportCanvasModal';
 import AIBuildPanel from './AIBuildPanel';
 import NodePreview from './NodePreview';
 import FocusSearch from './FocusSearch';
@@ -385,6 +386,9 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
   const [tabularMode, setTabularMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importContext, setImportContext] = useState({ parentId: null, nodeId: null });
+  const [panelRefresh, setPanelRefresh] = useState(0);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
@@ -1636,6 +1640,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
                 <ToolIcon glyph="📊" label="Table view" title={tabularMode ? 'Return to canvas view' : 'View as a root-at-top tabular format'} active={tabularMode} onActivate={() => setTabularMode((v) => !v)} />
                 <ToolIcon glyph={zoomLock ? '🔒' : '🔓'} label={zoomLock ? 'Unlock zoom' : 'Lock zoom'} title={zoomLock ? 'Zoom lock ON — scroll to pan the canvas' : 'Zoom lock OFF — scroll to zoom'} active={zoomLock} onActivate={() => setZoomLock((v) => !v)} />
                 {canEdit && <ToolIcon glyph="🔗" label="Link canvas" title="Link another canvas" onActivate={() => setLinkModalOpen(true)} />}
+                {canEdit && <ToolIcon glyph="📥" label="Import canvas" title="Copy another canvas's topics into this canvas as new roots" onActivate={() => { setImportContext({ parentId: null, nodeId: null }); setImportModalOpen(true); }} />}
                 {canEdit && <ToolIcon glyph="🤖" label="Ask AI" title="AI Q&A / build map" active={aiPanelOpen} onActivate={() => setAiPanelOpen((o) => !o)} />}
                 <ToolIcon glyph="⬇️" label="Export Excel" title="Download as Excel workbook" onActivate={exportExcel} />
                 {canEdit && <ToolIcon glyph="✏️" label="Edit mode" title="Edit canvas" onActivate={enterEditMode} />}
@@ -1778,6 +1783,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             />
           )}
 
+          {!fullscreenMode && importModalOpen && (
+            <ImportCanvasModal
+              currentCanvasId={canvasId}
+              parentId={importContext.parentId}
+              nodeId={importContext.nodeId}
+              onClose={() => setImportModalOpen(false)}
+              onImported={async () => { setPanelRefresh((k) => k + 1); await load(); }}
+            />
+          )}
+
           {!fullscreenMode && aiPanelOpen && (
             <AIBuildPanel
               canvasId={canvasId}
@@ -1813,6 +1828,8 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             readOnly={!canEdit}
             onDeleteNode={onDeleteNode}
             onMergeNode={stageMerge}
+            onImportCanvas={() => { setImportContext({ parentId: selectedNodeId, nodeId: selectedNodeId }); setImportModalOpen(true); }}
+            refreshSignal={panelRefresh}
             width={panelWidth}
             onResize={setPanelWidth}
             tempNode={

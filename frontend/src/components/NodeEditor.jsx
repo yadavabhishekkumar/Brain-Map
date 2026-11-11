@@ -8,7 +8,7 @@ import { getAiModel } from '../aiModel';
 const DEFAULT_REARRANGE_PROMPT =
   'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes and description, Connect them based on their relationship. If they are independent, then should exist parallel to each other. If they are somehow connected then connect them sequentially.';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, readOnly, onDeleteNode, onMergeNode, width, onResize, tempNode }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, readOnly, onDeleteNode, onMergeNode, onImportCanvas, refreshSignal = 0, width, onResize, tempNode }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -148,7 +148,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     } finally {
       setAttachmentsLoading(false);
     }
-  }, [nodeId, tempNode]);
+  }, [nodeId, tempNode, refreshSignal]);
 
   useEffect(() => {
     load();
@@ -481,6 +481,11 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
             <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>
               {exporting ? 'Exporting…' : '📤 Export to new canvas'}
             </button>
+            {!editMode && (
+              <button className="btn" onClick={onImportCanvas}>
+                📥 Import existing canvas
+              </button>
+            )}
             {editMode && node.parent_id && (
               !mergeChoiceOpen ? (
                 <button className="btn" onClick={() => setMergeChoiceOpen(true)}>
