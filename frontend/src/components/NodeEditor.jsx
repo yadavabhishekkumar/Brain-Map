@@ -30,6 +30,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   const [chats, setChats] = useState([]);
   const [showChats, setShowChats] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
+  const [doneAction, setDoneAction] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [mergeChoiceOpen, setMergeChoiceOpen] = useState(false);
   const [rearrangePrompt, setRearrangePrompt] = useState(DEFAULT_REARRANGE_PROMPT);
@@ -152,6 +153,10 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setDoneAction(null);
+  }, [nodeId]);
 
   // Build an editable study-context string from this node's title/description
   // and its ancestors (parent topics) — passed along with the user's question.
@@ -314,6 +319,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
     if (!question.trim() || asking) return;
     setAsking(true);
     setAnswer('');
+    setDoneAction(null);
     try {
       const r = await api.askAI(nodeId, question.trim(), getAiModel(), context);
       setAnswer(r.answer);
@@ -340,6 +346,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
       setPendingApply(null);
       await load();
       await onChanged();
+      setDoneAction(action);
       if (showChats) await loadChats();
     } catch (err) {
       alert(err.message);
@@ -351,6 +358,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   // 'notes' asks for append/override first; child & map apply directly.
   const applyAnswer = (action) => {
     if (editMode) return;
+    setDoneAction(null);
     if (action === 'notes') {
       setPendingApply('notes');
       return;
@@ -604,16 +612,16 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
           {answer && <div className="ai-answer">{renderMarkdown(answer)}</div>}
           {answer && (
             <div className="ai-answer-actions">
-              <button className="btn btn-sm" onClick={() => applyAnswer('notes')} disabled={applyingAnswer}>
+              <button className={`btn btn-sm${doneAction === 'notes' ? ' btn-done' : ''}`} onClick={() => applyAnswer('notes')} disabled={applyingAnswer}>
                 💾 Save to this topic's notes
               </button>
-              <button className="btn btn-sm" onClick={() => applyAnswer('child')} disabled={applyingAnswer}>
+              <button className={`btn btn-sm${doneAction === 'child' ? ' btn-done' : ''}`} onClick={() => applyAnswer('child')} disabled={applyingAnswer}>
                 ➕ Save to a new child topic
               </button>
-              <button className="btn btn-sm btn-primary" onClick={() => applyAnswer('map')} disabled={applyingAnswer}>
+              <button className={`btn btn-sm btn-primary${doneAction === 'map' ? ' btn-done' : ''}`} onClick={() => applyAnswer('map')} disabled={applyingAnswer}>
                 🗺️ Create a map from this
               </button>
-              <button className="btn btn-sm" onClick={() => applyAnswer('canvas')} disabled={applyingAnswer}>
+              <button className={`btn btn-sm${doneAction === 'canvas' ? ' btn-done' : ''}`} onClick={() => applyAnswer('canvas')} disabled={applyingAnswer}>
                 🔗 Create map in a new canvas &amp; link
               </button>
             </div>

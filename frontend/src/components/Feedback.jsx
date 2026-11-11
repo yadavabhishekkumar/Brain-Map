@@ -23,6 +23,25 @@ function toYmd(d) {
   return `${y}-${m}-${day}`;
 }
 
+function EditIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
 export default function Feedback({ onBack }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,8 +55,8 @@ export default function Feedback({ onBack }) {
   const [fromDate, setFromDate] = useState(() => toYmd(new Date(Date.now() - 24 * 60 * 60 * 1000)));
   const [toDate, setToDate] = useState(() => toYmd(new Date()));
   const [useAI, setUseAI] = useState(false);
-  const [exportApproval, setExportApproval] = useState('all');
-  const [exportCompletion, setExportCompletion] = useState('all');
+  const [exportApproval, setExportApproval] = useState('approved');
+  const [exportCompletion, setExportCompletion] = useState('not_completed');
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState('');
   const [resultOpen, setResultOpen] = useState(false);
@@ -142,8 +161,8 @@ export default function Feedback({ onBack }) {
     setFromDate(toYmd(new Date(Date.now() - 24 * 60 * 60 * 1000)));
     setToDate(toYmd(new Date()));
     setUseAI(false);
-    setExportApproval('all');
-    setExportCompletion('all');
+    setExportApproval('approved');
+    setExportCompletion('not_completed');
     setExportError('');
     setExportOpen(true);
   };
@@ -299,8 +318,8 @@ export default function Feedback({ onBack }) {
                     </button>
                   </div>
                   <div className="feedback-item-actions">
-                    <button className="feedback-mini" onClick={() => startEdit(f)} title="Edit" aria-label="Edit">✏️</button>
-                    <button className="feedback-mini feedback-mini-danger" onClick={() => remove(f)} title="Delete" aria-label="Delete">🗑</button>
+                    <button className="feedback-mini feedback-mini-edit" onClick={() => startEdit(f)} title="Edit" aria-label="Edit"><EditIcon /></button>
+                    <button className="feedback-mini feedback-mini-danger" onClick={() => remove(f)} title="Delete" aria-label="Delete"><TrashIcon /></button>
                   </div>
                 </div>
                 <div className="feedback-item-date">{formatDate(f.created_at)}</div>
