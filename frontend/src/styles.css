@@ -1252,6 +1252,18 @@ mark {
   margin-top: 4px;
 }
 
+/* Persistent success highlight for AI-answer action buttons (save/map). */
+.btn.btn-done {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #fff !important;
+}
+
+.btn.btn-done:hover {
+  background: #15803d !important;
+  border-color: #15803d !important;
+}
+
 /* ---------- Read-only node preview (single click) ---------- */
 .node-preview-wrap {
   position: absolute;
@@ -1362,6 +1374,119 @@ mark {
   border-top: 3px solid #334155;
   margin: 12px 0;
 }
+
+/* ---------- LaTeX math rendering ---------- */
+.math-inline {
+  font-family: inherit;
+}
+
+.math-display {
+  display: block;
+  text-align: center;
+  margin: 8px 0;
+  padding: 4px 2px;
+  overflow-x: auto;
+}
+
+.mfrac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  margin: 0 2px;
+}
+
+.mfrac-top {
+  border-bottom: 1px solid currentColor;
+  padding: 0 4px 1px;
+}
+
+.mfrac-bot {
+  padding: 1px 4px 0;
+}
+
+.msqrt {
+  white-space: nowrap;
+}
+
+.msqrt-idx {
+  margin-right: 1px;
+  font-size: 0.85em;
+}
+
+.msqrt-over {
+  border-top: 1px solid currentColor;
+  padding: 0 1px;
+}
+
+.mtx {
+  display: inline-table;
+  vertical-align: middle;
+  margin: 0 3px;
+}
+
+.mtx-table {
+  border-collapse: collapse;
+}
+
+.mtx-table td {
+  padding: 1px 7px;
+  text-align: center;
+}
+
+.mtx-square {
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  padding: 0 2px;
+}
+
+.mtx-paren {
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-radius: 6px;
+  padding: 0 2px;
+}
+
+.mtx-curly {
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-radius: 7px;
+  padding: 0 2px;
+}
+
+.mtx-bar {
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  padding: 0 2px;
+}
+
+.mtx-doublebar {
+  border-left: 3px double currentColor;
+  border-right: 3px double currentColor;
+  padding: 0 2px;
+}
+
+.mtx-cases {
+  border-left: 1.5px solid currentColor;
+  border-radius: 7px 0 0 7px;
+  padding-left: 7px;
+}
+
+.mtx-none {
+  padding: 0 2px;
+}
+
+.mrm { font-style: normal; }
+.mit { font-style: italic; }
+.mbold { font-weight: 700; }
+.msf { font-family: inherit; }
+.mtt { font-family: monospace; }
+.mbb, .mcal, .mfrak { font-weight: 700; }
+.mtext { font-style: normal; }
+.mtext-bf { font-weight: 700; }
+.munknown { opacity: 0.7; }
+.overline { text-decoration: overline; }
+.underline { text-decoration: underline; }
 
 /* ---------- AI answer apply / chat history ---------- */
 .apply-mode-choice {
@@ -4128,6 +4253,11 @@ mark {
   border-color: rgba(168, 85, 247, 0.7);
 }
 
+.home-input option {
+  background: #14141c;
+  color: #f5f5f8;
+}
+
 .home-error {
   margin-top: 4px;
   font-size: 13px;
@@ -4324,6 +4454,11 @@ mark {
 .canvas-shell.dark-mode .node-editor {
   background: #22272e;
   border-left-color: #373e47;
+}
+
+.canvas-shell.dark-mode .ai-answer {
+  background: #2d333b;
+  color: #cdd9e5;
 }
 
 .canvas-shell.dark-mode .merge-choice {
@@ -4588,22 +4723,37 @@ mark {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   color: #cdd9e5;
-  font-size: 14px;
-  line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.feedback-mini svg {
+  display: block;
 }
 
 .feedback-mini:hover {
   background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.feedback-mini:active {
+  transform: scale(0.92);
+}
+
+.feedback-mini-edit:hover {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.12);
 }
 
 .feedback-mini-danger:hover {
   color: #f87171;
   border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .feedback-edit {
