@@ -4,8 +4,9 @@ const { uuid } = require('../util');
 const { indexNode } = require('../services/indexer');
 const es = require('../es');
 const storage = require('../storage');
-const { requireCanvasOwner, canManageCanvas } = require('../services/access');
+const { requireCanvasOwner, requireCanvasRead, canManageCanvas } = require('../services/access');
 const { uniqueCanvasName } = require('../services/names');
+const { recomputeDepths, computePositions } = require('../services/layout');
 
 const router = express.Router();
 
@@ -354,6 +355,187 @@ router.post('/:id/link', async (req, res, next) => {
     next(e);
   }
 });
+
+// Import an existing canvas's whole tree into this canvas (deep copy).
+// When parent_id is provided the source's root topics become children of that
+// node; otherwise they are added as new root topics. The source is untouched.
+router.post('/:id/import', async (req, res, next) => {
+  try {
+    const canvasId = req.params.id;
+    const err = await requireCanvasOwner(req.user, canvasId);
+    if (err) return res.status(err.status).json({ error: err.error });
+
+    const { source_canvas_id, parent_id } = req.body || {};
+    if (!source_canvas_id) return res.status(400).json({ error: 'source_canvas_id is required' });
+    if (source_canvas_id === canvasId) {
+      return res.status(400).json({ error: 'Cannot import a canvas into itself' });
+    }
+
+    const readErr = await requireCanvasRead(req.user, source_canvas_id);
+    if (readErr) return res.status(readErr.status).json({ error: readErr.error });
+
+    let parent = null;
+    if (parent_id) {
+      const p = await pool.query('SELECT id, x, y, depth FROM nodes WHERE id=$1 AND canvas_id=$2', [
+        parent_id,
+        canvasId,
+      ]);
+      if (!p.rows[0]) return res.status(404).json({ error: 'Parent node not found' });
+      parent = p.rows[0];
+    }
+
+    // Source nodes ordered so parents exist before their children.
+    const srcNodes = await pool.query(
+      'SELECT * FROM nodes WHERE canvas_id=$1 ORDER BY depth ASC, y ASC, x ASC',
+      [source_canvas_id]
+    );
+    if (!srcNodes.rows.length) {
+      return res.status(400).json({ error: 'The source canvas has no topics to import' });
+    }
+
+    // Rebuild the source tree structure and compute a clean left-to-right layout.
+    const byId = new Map(srcNodes.rows.map((n) => [n.id, n]));
+    const children = new Map();
+    const roots = [];
+    for (const n of srcNodes.rows) {
+      if (n.parent_id && byId.has(n.parent_id)) {
+        if (!children.has(n.parent_id)) children.set(n.parent_id, []);
+        children.get(n.parent_id).push(n);
+      } else {
+        roots.push(n);
+      }
+    }
+    children.forEach((v) => v.sort((a, b) => a.y - b.y || a.x - b.x));
+    roots.sort((a, b) => a.y - b.y || a.x - b.x);
+
+    const flat = [];
+    const walk = (node, parentIdx) => {
+      const idx = flat.length;
+      flat.push({ node, parentRef: parentIdx });
+      for (const k of children.get(node.id) || []) walk(k, idx);
+    };
+    for (const r of roots) walk(r, -1);
+
+    const pos = computePositions(flat);
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const p of pos) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+    }
+    if (!Number.isFinite(minX)) {
+      minX = 0;
+      minY = 0;
+    }
+
+    // Placement offset: to the right of the parent, or below the existing tree.
+    let offsetX;
+    let offsetY;
+    if (parent) {
+      offsetX = Number(parent.x) + 280 - minX;
+      offsetY = Number(parent.y) - pos[0].y;
+    } else {
+      const bounds = await pool.query(
+        'SELECT COALESCE(MAX(y),0)::float AS max_y FROM nodes WHERE canvas_id=$1',
+        [canvasId]
+      );
+      offsetX = 0 - minX;
+      offsetY = Number(bounds.rows[0].max_y) + 160 - minY;
+    }
+
+    const idMap = new Map();
+    let imported = 0;
+    for (let i = 0; i < flat.length; i++) {
+      const n = flat[i].node;
+      const newId = uuid();
+      idMap.set(n.id, newId);
+      const isSourceRoot = !n.parent_id || !byId.has(n.parent_id);
+      const newParentId = isSourceRoot ? parent_id || null : idMap.get(n.parent_id) || null;
+      // A link pointing back at this canvas would become a self-reference; drop it.
+      const linkedId = n.linked_canvas_id === canvasId ? null : n.linked_canvas_id || null;
+      await pool.query(
+        `INSERT INTO nodes (id, canvas_id, parent_id, label, content, x, y, depth, metadata, linked_canvas_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          newId,
+          canvasId,
+          newParentId,
+          n.label,
+          n.content || '',
+          pos[i].x + offsetX,
+          pos[i].y + offsetY,
+          n.depth,
+          n.metadata || {},
+          linkedId,
+        ]
+      );
+      imported += 1;
+    }
+
+    // Copy cross-link edges between imported nodes.
+    const srcEdges = await pool.query('SELECT * FROM edges WHERE canvas_id=$1', [source_canvas_id]);
+    for (const e of srcEdges.rows) {
+      const s = idMap.get(e.source_id);
+      const t = idMap.get(e.target_id);
+      if (s && t) {
+        await pool.query(
+          'INSERT INTO edges (id, canvas_id, source_id, target_id, label) VALUES ($1,$2,$3,$4,$5)',
+          [uuid(), canvasId, s, t, e.label || '']
+        );
+      }
+    }
+
+    // Copy attachments (note screenshots) to the imported nodes.
+    const srcIds = srcNodes.rows.map((r) => r.id);
+    if (srcIds.length) {
+      const atts = await pool.query('SELECT * FROM attachments WHERE node_id = ANY($1::uuid[])', [
+        srcIds,
+      ]);
+      for (const a of atts.rows) {
+        const newNodeId = idMap.get(a.node_id);
+        if (!newNodeId) continue;
+        const newAttId = uuid();
+        const ext = (a.storage_key.split('.').pop() || 'png').slice(0, 8);
+        const newKey = `${canvasId}/${newNodeId}/${newAttId}.${ext}`;
+        try {
+          const buf = await storage.getBuffer(a.storage_key);
+          await storage.put(newKey, buf, a.mime_type);
+          await pool.query(
+            `INSERT INTO attachments (id, node_id, canvas_id, storage_key, original_filename, mime_type, size_bytes, extracted_text, status, applied_action)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [
+              newAttId,
+              newNodeId,
+              canvasId,
+              newKey,
+              a.original_filename,
+              a.mime_type,
+              a.size_bytes,
+              a.extracted_text,
+              a.status,
+              a.applied_action,
+            ]
+          );
+        } catch (err) {
+          console.warn('[import] failed to copy attachment', a.id, err.message);
+        }
+      }
+    }
+
+    await recomputeDepths(canvasId);
+    await pool.query('UPDATE canvases SET updated_at=now() WHERE id=$1', [canvasId]);
+
+    // Re-index the imported nodes so search picks them up.
+    for (const newId of idMap.values()) {
+      await indexNode(newId);
+    }
+
+    res.status(201).json({ imported_count: imported, parent_id: parent_id || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
 
 // List chat history for a canvas (the top-level "Ask AI" panel).
 router.get('/:id/chats', async (req, res, next) => {

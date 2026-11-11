@@ -1107,6 +1107,23 @@ mark {
   font-weight: 600;
 }
 
+.canvas-pick-multi {
+  cursor: default;
+}
+
+.canvas-pick-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.canvas-pick-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* ---------- AI build panel ---------- */
 .ai-panel {
   position: absolute;

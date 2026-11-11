@@ -42,7 +42,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// Update a node (label, content, position, or parent)
+// Update a node (label, content, position, parent, or canvas link)
 router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -52,10 +52,19 @@ router.put('/:id', async (req, res, next) => {
     const err = await requireCanvasOwner(req.user, canvasId);
     if (err) return res.status(err.status).json({ error: err.error });
 
+    // Validate a canvas link target before applying it.
+    if (req.body.linked_canvas_id !== undefined && req.body.linked_canvas_id) {
+      const linkedId = req.body.linked_canvas_id;
+      const target = await pool.query('SELECT id FROM canvases WHERE id=$1', [linkedId]);
+      if (!target.rows[0]) return res.status(404).json({ error: 'Linked canvas not found' });
+      const readErr = await requireCanvasRead(req.user, linkedId);
+      if (readErr) return res.status(readErr.status).json({ error: readErr.error });
+    }
+
     const fields = [];
     const values = [];
     let i = 1;
-    for (const col of ['label', 'content', 'x', 'y', 'parent_id']) {
+    for (const col of ['label', 'content', 'x', 'y', 'parent_id', 'linked_canvas_id']) {
       if (req.body[col] !== undefined) {
         fields.push(`${col}=$${i++}`);
         values.push(req.body[col]);

@@ -18,6 +18,9 @@ with an **AI vision model**, and **search** everything instantly with Elasticsea
   with highlighted results and click-to-focus navigation.
 - **Cross-canvas links** — link any existing canvas into another canvas as a topic node, then
   double-click the node (or use the editor's **Open** button) to jump across canvases.
+- **Import an existing canvas** — from the side panel, pick another canvas and either **Create a
+  copy** (deep-copy its whole tree into this canvas under the selected topic) or **Link** (turn the
+  selected topic into a link that opens that canvas). The source canvas is left untouched.
 - **AI Q&A on topics** — ask DeepSeek a question about any topic; the prompt automatically
   includes that topic's text plus its parent topics as context.
 - **AI map builder** — type a request in a chat box and DeepSeek generates/populates a whole
@@ -123,6 +126,7 @@ Open http://localhost:5173 — create a canvas and start mapping the syllabus.
 | POST | `/api/attachments/:id/apply` | `store` / `append_text` / `append_nodes` |
 | GET | `/api/search?q=&canvas_id=` | Elasticsearch search |
 | POST | `/api/canvases/:id/link` | link another canvas as a topic node |
+| POST | `/api/canvases/:id/import` | copy another canvas's tree into this canvas |
 | POST | `/api/ai/ask` | AI Q&A on a node (context = node + ancestors) |
 | POST | `/api/ai/build` | generate a brain-map tree from a prompt |
 

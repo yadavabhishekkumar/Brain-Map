@@ -100,6 +100,8 @@ export const api = {
 
   linkCanvas: (canvasId, data) => request(`/canvases/${canvasId}/link`, { method: 'POST', body: JSON.stringify(data) }),
 
+  importCanvas: (canvasId, data) => request(`/canvases/${canvasId}/import`, { method: 'POST', body: JSON.stringify(data) }),
+
   askAI: (nodeId, question, model, context) =>
     request('/ai/ask', { method: 'POST', body: JSON.stringify({ node_id: nodeId, question, model, context: context || '' }) }),
 
