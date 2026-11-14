@@ -496,7 +496,7 @@ router.post('/analyze', upload.single('file'), async (req, res, next) => {
     const r = await ai.chatCompletion(messages, {
       model: modelName,
       effort: effortLevel,
-      maxTokens: 20000,
+      maxTokens: 64000,
       userId: req.user && req.user.sub,
     });
 

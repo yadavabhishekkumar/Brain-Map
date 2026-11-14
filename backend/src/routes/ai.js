@@ -69,7 +69,7 @@ router.post('/ask', async (req, res, next) => {
       { role: 'user', content: `Study context:\n\n${context}\n\nStudent's question: ${question.trim()}` },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2, userId: req.user && req.user.sub });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 64000, temperature: 0.2, userId: req.user && req.user.sub });
 
     const chatId = uuid();
     await pool.query(
@@ -108,7 +108,7 @@ router.post('/respond', async (req, res, next) => {
       },
     ];
 
-    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 8000, temperature: 0.2, userId: req.user && req.user.sub });
+    const { content } = await ai.chatCompletion(messages, { provider: model, maxTokens: 64000, temperature: 0.2, userId: req.user && req.user.sub });
 
     let chatId = null;
     if (canvas_id) {
@@ -181,7 +181,7 @@ async function generateMapTree(text, provider, userId) {
   ];
   const { content } = await ai.chatCompletion(messages, {
     provider,
-    maxTokens: 12000,
+    maxTokens: 32000,
     temperature: 0.2,
     json: true,
     userId,
@@ -245,7 +245,7 @@ router.post('/build', async (req, res, next) => {
     ];
     const { content } = await ai.chatCompletion(messages, {
       provider: model,
-      maxTokens: 12000,
+      maxTokens: 32000,
       temperature: 0.2,
       json: true,
       userId: req.user && req.user.sub,
@@ -670,7 +670,7 @@ router.post('/rearrange', async (req, res, next) => {
 
     const { content } = await ai.chatCompletion(messages, {
       provider: model,
-      maxTokens: 8000,
+      maxTokens: 32000,
       json: true,
       userId: req.user && req.user.sub,
     });
