@@ -88,9 +88,10 @@ function resolveChatProvider(provider) {
         model: 'deepseek-reasoner',
         supportsEffort: false,
         supportsTemperature: false,
-        // Reasoner does not support structured JSON output, and caps output lower.
+        // Reasoner does not support structured JSON output.
         supportsResponseFormat: false,
-        maxTokensCap: 8000,
+        // DeepSeek reasoner supports up to 64K output tokens; keep long answers intact.
+        maxTokensCap: 64000,
       };
     case 'deepseek':
     default:

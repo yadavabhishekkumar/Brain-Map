@@ -68,7 +68,7 @@ router.post('/rephrase', async (req, res, next) => {
 
     const { content } = await ai.chatCompletion(messages, {
       provider: model,
-      maxTokens: 8000,
+      maxTokens: 32000,
       temperature: 0.3,
       userId: req.user && req.user.sub,
     });
