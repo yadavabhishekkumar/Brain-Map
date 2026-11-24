@@ -8,7 +8,7 @@ import { getAiModel } from '../aiModel';
 const DEFAULT_REARRANGE_PROMPT =
   'Break all child Nodes into individual Nodes, and then based on Title of each of those individual Nodes and description, Connect them based on their relationship. If they are independent, then should exist parallel to each other. If they are somehow connected then connect them sequentially.';
 
-export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, readOnly, onDeleteNode, onMergeNode, onImportCanvas, refreshSignal = 0, width, onResize, tempNode }) {
+export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCanvas, editMode, readOnly, onDeleteNode, onMergeNode, onImportCanvas, refreshSignal = 0, width, onResize, tempNode, onSaveLocal }) {
   const [node, setNode] = useState(null);
   const [label, setLabel] = useState('');
   const [content, setContent] = useState('');
@@ -195,12 +195,18 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
   }, [buildContext]);
 
   const save = async () => {
-    if (editMode) return;
+    if (saving) return;
     setSaving(true);
     try {
       const payload = { label, content, parent_id: parentId || null };
-      await api.updateNode(nodeId, payload);
-      await onChanged();
+      if (editMode) {
+        // Staged edit: apply locally so the title/content/parent change is
+        // picked up when the canvas changes are saved from the toolbar.
+        if (onSaveLocal) onSaveLocal(nodeId, payload);
+      } else {
+        await api.updateNode(nodeId, payload);
+        await onChanged();
+      }
     } catch (e) {
       alert(e.message);
     } finally {
@@ -475,7 +481,7 @@ export default function NodeEditor({ nodeId, nodes, onChanged, onClose, onOpenCa
 
         {!readOnly && (
           <div className="panel-actions">
-            <button className="btn btn-primary" onClick={save} disabled={saving || editMode}>
+            <button className="btn btn-primary" onClick={save} disabled={saving || readOnly}>
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button className="btn" onClick={exportNode} disabled={exporting || !!tempNode}>

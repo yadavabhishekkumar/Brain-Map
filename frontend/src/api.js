@@ -36,6 +36,8 @@ export const api = {
   syncCanvas: (id, data) => request(`/canvases/${id}/sync`, { method: 'POST', body: JSON.stringify(data) }),
   setCanvasVisibility: (id, isPublic) =>
     request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_public: isPublic }) }),
+  setCanvasPinned: (id, pinned) =>
+    request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_pinned: pinned }) }),
 
   listCategories: () => request('/categories'),
   createCategory: (name) => request('/categories', { method: 'POST', body: JSON.stringify({ name }) }),

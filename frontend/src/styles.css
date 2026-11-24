@@ -1290,6 +1290,7 @@ mark {
 }
 
 .node-preview {
+  position: relative;
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1326,6 +1327,40 @@ mark {
   overflow-y: auto;
   font-size: 14px;
   line-height: 1.55;
+}
+
+.node-preview-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: nwse-resize;
+  z-index: 2;
+}
+
+.node-preview-resize::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-bottom-right-radius: 3px;
+}
+
+.node-preview-resize:hover::after {
+  border-color: var(--primary);
+}
+
+body.preview-resizing {
+  cursor: nwse-resize;
+  user-select: none;
 }
 
 .node-preview-editor {
@@ -3907,6 +3942,10 @@ mark {
   background: rgba(139, 92, 246, 0.12);
 }
 
+.home-card-pinned {
+  border-color: rgba(251, 191, 36, 0.55);
+}
+
 .home-check {
   position: absolute;
   top: 12px;
@@ -3997,12 +4036,30 @@ mark {
   border-color: rgba(248, 113, 113, 0.5);
 }
 
+.home-mini-pin {
+  opacity: 0.55;
+}
+
+.home-mini-pin-on {
+  opacity: 1;
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.14);
+}
+
 .home-card-title {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.3;
+}
+
+.home-pin-tag {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 13px;
+  vertical-align: 1px;
 }
 
 .home-card-desc {

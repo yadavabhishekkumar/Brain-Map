@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS canvases (
   description TEXT NOT NULL DEFAULT '',
   owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
   is_public BOOLEAN NOT NULL DEFAULT false,
+  is_pinned BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -137,6 +138,9 @@ async function initSchema() {
   // the base schema) so pre-existing databases are upgraded without a full rebuild.
   await pool.query(
     `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id) ON DELETE SET NULL`
+  );
+  await pool.query(
+    `ALTER TABLE canvases ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false`
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_canvases_category ON canvases(category_id)`
