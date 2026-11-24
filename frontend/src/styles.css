@@ -1340,6 +1340,7 @@ mark {
   background: transparent;
   cursor: nwse-resize;
   z-index: 2;
+  touch-action: none;
 }
 
 .node-preview-resize::after {
@@ -1356,6 +1357,35 @@ mark {
 
 .node-preview-resize:hover::after {
   border-color: var(--primary);
+}
+
+.node-preview-resize-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 18px;
+  border: none;
+  background: transparent;
+  cursor: ns-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.node-preview-resize-bottom::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.node-preview-resize-bottom:hover::after {
+  background: var(--primary);
 }
 
 body.preview-resizing {
