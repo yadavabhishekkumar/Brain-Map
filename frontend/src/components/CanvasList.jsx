@@ -18,10 +18,10 @@ function initials(user) {
   return n.slice(0, 2).toUpperCase();
 }
 
-// Order canvases so that linked parent canvases come first, immediately
-// followed by their children (sequentially), and the remaining unlinked
-// canvases are sorted alphabetically.
-function sortCanvases(list) {
+// Order a group of canvases so that linked parent canvases come first,
+// immediately followed by their children (sequentially), and the remaining
+// unlinked canvases are sorted alphabetically.
+function sortGroup(list) {
   const byId = new Map(list.map((c) => [c.id, c]));
   const children = new Map();
   const incoming = new Map();
@@ -52,6 +52,14 @@ function sortCanvases(list) {
     .filter((c) => !visited.has(c.id))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   return ordered.concat(rest);
+}
+
+// Pinned canvases always appear first so they are easy to find, then the
+// remaining canvases keep their linked/alphabetic ordering.
+function sortCanvases(list) {
+  const pinned = list.filter((c) => c.is_pinned);
+  const unpinned = list.filter((c) => !c.is_pinned);
+  return [...sortGroup(pinned), ...sortGroup(unpinned)];
 }
 
 export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSignOut, onOpenStats, onOpenFeedback, onProfileUpdated }) {
@@ -189,6 +197,15 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
     if (!window.confirm(msg)) return;
     try {
       await api.setCanvasVisibility(canvas.id, next);
+      await load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const togglePinned = async (canvas) => {
+    try {
+      await api.setCanvasPinned(canvas.id, !canvas.is_pinned);
       await load();
     } catch (e) {
       alert(e.message);
@@ -495,7 +512,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                 return (
                   <article
                     key={c.id}
-                    className={`home-card${isSelected ? ' home-card-selected' : ''}${(c.linked_to && c.linked_to.length) || (c.linked_from && c.linked_from.length) ? ' home-card-linked' : ''}`}
+                    className={`home-card${isSelected ? ' home-card-selected' : ''}${c.is_pinned ? ' home-card-pinned' : ''}${(c.linked_to && c.linked_to.length) || (c.linked_from && c.linked_from.length) ? ' home-card-linked' : ''}`}
                     onClick={() => onOpen(c.id, c.name)}
                   >
                     {user && (
@@ -515,6 +532,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                       <div className="home-card-actions">
                         {isOwner && (
                           <>
+                            <button className={`home-mini home-mini-pin${c.is_pinned ? ' home-mini-pin-on' : ''}`} title={c.is_pinned ? 'Unpin from top' : 'Pin to top'} onClick={(e) => { e.stopPropagation(); togglePinned(c); }}>📌</button>
                             <button className="home-mini" title="Move to tab" onClick={(e) => { e.stopPropagation(); moveOne(c.id); }}>⇄</button>
                             <button className="home-mini" title={c.is_public ? 'Make private' : 'Make public'} onClick={(e) => { e.stopPropagation(); togglePublic(c); }}>
                               {c.is_public ? '🔒' : '🌐'}
@@ -527,7 +545,7 @@ export default function CanvasList({ user, onOpen, onOpenEpaper, onSignIn, onSig
                         )}
                       </div>
                     </div>
-                    <h3 className="home-card-title">{c.name}</h3>
+                    <h3 className="home-card-title">{c.is_pinned && <span className="home-pin-tag" title="Pinned to top">📌</span>}{c.name}</h3>
                     <p className="home-card-desc">{c.description || 'No description yet'}</p>
                     <div className="home-card-foot">
                       <span className="home-card-meta">

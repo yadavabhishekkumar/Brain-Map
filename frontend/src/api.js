@@ -35,6 +35,8 @@ export const api = {
   forkCanvas: (id) => request(`/canvases/${id}/fork`, { method: 'POST' }),
   setCanvasVisibility: (id, isPublic) =>
     request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_public: isPublic }) }),
+  setCanvasPinned: (id, pinned) =>
+    request(`/canvases/${id}`, { method: 'PUT', body: JSON.stringify({ is_pinned: pinned }) }),
 
   listCategories: () => request('/categories'),
   createCategory: (name) => request('/categories', { method: 'POST', body: JSON.stringify({ name }) }),

@@ -621,6 +621,66 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
     [pushUndo, setNodes]
   );
 
+  // Apply the side panel's title/content/parent edits to the staged (edit mode)
+  // node state so they persist when the canvas changes are saved from the toolbar.
+  const saveNodeLocal = useCallback(
+    (nodeId, patch) => {
+      if (!editMode) return;
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const oldParent = (node.data && node.data.parent_id) || null;
+      const newParent = patch.parent_id !== undefined ? patch.parent_id : oldParent;
+
+      const labelChanged = patch.label !== undefined && patch.label !== (node.data && node.data.label);
+      const contentChanged = patch.content !== undefined && patch.content !== (node.data && node.data.content);
+      const parentChanged = patch.parent_id !== undefined && patch.parent_id !== oldParent;
+      if (!labelChanged && !contentChanged && !parentChanged) return;
+
+      pushUndo();
+      setNodes((nds) => {
+        const child = nds.find((n) => n.id === nodeId);
+        if (!child) return nds;
+        const parent = newParent ? nds.find((n) => n.id === newParent) : null;
+        const targetDepth = parent ? (parent.data.depth + 1) : 0;
+        const depthDelta = targetDepth - (child.data.depth || 0);
+
+        // Collect the child's subtree so its depths shift together.
+        const subtree = new Set([nodeId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const n of nds) {
+            if (n.data && n.data.parent_id && subtree.has(n.data.parent_id) && !subtree.has(n.id)) {
+              subtree.add(n.id);
+              changed = true;
+            }
+          }
+        }
+
+        return nds.map((n) => {
+          if (n.id === nodeId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                label: patch.label !== undefined ? patch.label : n.data.label,
+                content: patch.content !== undefined ? patch.content : n.data.content,
+                parent_id: newParent,
+                depth: targetDepth,
+                isRoot: !newParent,
+              },
+            };
+          }
+          if (subtree.has(n.id) && depthDelta !== 0) {
+            return { ...n, data: { ...n.data, depth: Math.max(0, (n.data.depth || 0) + depthDelta) } };
+          }
+          return n;
+        });
+      });
+    },
+    [editMode, nodes, pushUndo, setNodes]
+  );
+
   const onNodeAction = useCallback(
     (nodeId, action) => {
       if (!editMode) return;
@@ -811,7 +871,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         idMap.set(n.id, created.id);
       }
 
-      // 3. Detached nodes (parent changed)
+      // 3. Updated nodes (parent / position / title / notes changes)
       const baseMap = new Map(baseline.nodes.map((n) => [n.id, n]));
       for (const n of nodes) {
         if (!baseIds.has(n.id)) continue;
@@ -819,12 +879,16 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
         const oldParent = (b.data && b.data.parent_id) || null;
         const newParent = (n.data && n.data.parent_id) || null;
         const moved = b.position.x !== n.position.x || b.position.y !== n.position.y;
+        const labelChanged = (b.data && b.data.label) !== (n.data && n.data.label);
+        const contentChanged = ((b.data && b.data.content) || '') !== ((n.data && n.data.content) || '');
         const payload = {};
         if (oldParent !== newParent) payload.parent_id = newParent;
         if (moved) {
           payload.x = n.position.x;
           payload.y = n.position.y;
         }
+        if (labelChanged) payload.label = (n.data && n.data.label) || '';
+        if (contentChanged) payload.content = (n.data && n.data.content) || '';
         if (Object.keys(payload).length) await api.updateNode(n.id, payload);
       }
 
@@ -1822,6 +1886,7 @@ function CanvasInner({ canvasId, canvasName, onBack, onOpenCanvas }) {
             nodeId={selectedNodeId}
             nodes={nodes}
             onChanged={editMode ? () => {} : load}
+            onSaveLocal={saveNodeLocal}
             onClose={closePanels}
             onOpenCanvas={onOpenCanvas}
             editMode={editMode}

@@ -16,7 +16,7 @@ router.get('/', async (req, res, next) => {
     const userId = req.user ? req.user.sub : null;
     const { rows } = await pool.query(
       `SELECT c.id, c.name, c.description, c.owner_id, u.name AS owner_name,
-              c.category_id,
+              c.category_id, c.is_pinned,
               (c.owner_id IS NULL OR c.is_public) AS is_public,
               c.created_at, c.updated_at,
               (SELECT count(*)::int FROM nodes n WHERE n.canvas_id = c.id) AS node_count,
@@ -42,7 +42,7 @@ router.get('/', async (req, res, next) => {
        FROM canvases c
        LEFT JOIN users u ON u.id = c.owner_id
        WHERE c.owner_id IS NULL OR c.owner_id = $1 OR c.is_public
-       ORDER BY c.updated_at DESC`,
+       ORDER BY c.is_pinned DESC, c.updated_at DESC`,
       [userId]
     );
     res.json(rows);
@@ -199,6 +199,12 @@ router.put('/:id', async (req, res, next) => {
       fields.push(`is_public=$${i++}`);
       values.push(
         req.body.is_public === true || req.body.is_public === 'true' || req.body.is_public === 1
+      );
+    }
+    if (req.body.is_pinned !== undefined) {
+      fields.push(`is_pinned=$${i++}`);
+      values.push(
+        req.body.is_pinned === true || req.body.is_pinned === 'true' || req.body.is_pinned === 1
       );
     }
     if (fields.length) {
