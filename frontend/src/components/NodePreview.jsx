@@ -10,6 +10,7 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
   const [saving, setSaving] = useState(false);
   const [size, setSize] = useState({ width: null, height: null });
   const boxRef = useRef(null);
+  const textareaRef = useRef(null);
 
   const startResize = (e) => {
     e.preventDefault();
@@ -41,6 +42,24 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
   };
 
   const cancelEdit = () => setEditing(false);
+
+  // Wrap the currently-selected text (or insert a placeholder) with a markdown
+  // marker so the popup editor can apply bold/italic/underline/highlight/strike.
+  const applyFormat = (prefix, suffix = prefix) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? draft.length;
+    const end = ta.selectionEnd ?? draft.length;
+    const selected = draft.slice(start, end);
+    const inner = selected || 'text';
+    const next = draft.slice(0, start) + prefix + inner + suffix + draft.slice(end);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const selStart = start + prefix.length;
+      ta.setSelectionRange(selStart, selStart + inner.length);
+    });
+  };
 
   const saveEdit = async () => {
     if (saving) return;
@@ -77,8 +96,16 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
         <div className="node-preview-body" style={size.height ? { maxHeight: 'none', flex: 1, minHeight: 0 } : undefined}>
           {editing ? (
             <div className="node-preview-editor">
+              <div className="node-preview-toolbar" role="toolbar" aria-label="Text formatting">
+                <button type="button" className="fmt-btn fmt-bold" title="Bold" aria-label="Bold" onMouseDown={(e) => { e.preventDefault(); applyFormat('**'); }}>B</button>
+                <button type="button" className="fmt-btn fmt-italic" title="Italic" aria-label="Italic" onMouseDown={(e) => { e.preventDefault(); applyFormat('*'); }}>I</button>
+                <button type="button" className="fmt-btn fmt-underline" title="Underline" aria-label="Underline" onMouseDown={(e) => { e.preventDefault(); applyFormat('__'); }}>U</button>
+                <button type="button" className="fmt-btn" title="Highlight" aria-label="Highlight" onMouseDown={(e) => { e.preventDefault(); applyFormat('=='); }}><span className="fmt-mark">A</span></button>
+                <button type="button" className="fmt-btn fmt-strike" title="Strikethrough" aria-label="Strikethrough" onMouseDown={(e) => { e.preventDefault(); applyFormat('~~'); }}>S</button>
+              </div>
               <div className="voice-field">
                 <textarea
+                  ref={textareaRef}
                   rows={6}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
