@@ -1369,6 +1369,53 @@ body.preview-resizing {
   gap: 8px;
 }
 
+.node-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.fmt-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fmt-btn:hover {
+  border-color: var(--primary);
+  background: rgba(26, 115, 232, 0.08);
+}
+
+.fmt-italic {
+  font-style: italic;
+  font-weight: 600;
+}
+
+.fmt-underline {
+  text-decoration: underline;
+}
+
+.fmt-strike {
+  text-decoration: line-through;
+}
+
+.fmt-mark {
+  display: inline-block;
+  background: #fde293;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 700;
+}
+
 .node-preview-editor textarea {
   width: 100%;
   padding: 9px 11px;

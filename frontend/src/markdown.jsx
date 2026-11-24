@@ -1,7 +1,8 @@
 import { Fragment } from 'react';
 import { renderLatexHtml, splitDisplayMath, splitInlineMath } from './latex';
 
-// Render one line of text, handling **bold**, *italic*, `code` and $inline math$.
+// Render one line of text, handling **bold**, *italic*, `code`, ~~strikethrough~~,
+// ==highlight==, __underline__ and $inline math$.
 function inline(text) {
   const out = [];
   let key = 0;
@@ -16,7 +17,9 @@ function inline(text) {
       );
       continue;
     }
-    const parts = String(seg.value || '').split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+    const parts = String(seg.value || '').split(
+      /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|~~[^~]+~~|==[^=]+==|__[^_]+__)/g
+    );
     for (const p of parts) {
       if (p.startsWith('**') && p.endsWith('**')) {
         out.push(<strong key={key++}>{p.slice(2, -2)}</strong>);
@@ -24,6 +27,12 @@ function inline(text) {
         out.push(<em key={key++}>{p.slice(1, -1)}</em>);
       } else if (p.startsWith('`') && p.endsWith('`')) {
         out.push(<code key={key++}>{p.slice(1, -1)}</code>);
+      } else if (p.startsWith('~~') && p.endsWith('~~') && p.length > 4) {
+        out.push(<del key={key++}>{p.slice(2, -2)}</del>);
+      } else if (p.startsWith('==') && p.endsWith('==') && p.length > 4) {
+        out.push(<mark key={key++}>{p.slice(2, -2)}</mark>);
+      } else if (p.startsWith('__') && p.endsWith('__') && p.length > 4) {
+        out.push(<u key={key++}>{p.slice(2, -2)}</u>);
       } else {
         out.push(<Fragment key={key++}>{p}</Fragment>);
       }
