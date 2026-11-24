@@ -12,7 +12,7 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
   const boxRef = useRef(null);
   const textareaRef = useRef(null);
 
-  const startResize = (e) => {
+  const beginResize = (e, axis = 'both') => {
     e.preventDefault();
     e.stopPropagation();
     const box = boxRef.current;
@@ -22,19 +22,28 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
     const startY = e.clientY;
 
     const onMove = (ev) => {
-      const w = Math.max(260, Math.min(window.innerWidth - 24, startW + (ev.clientX - startX)));
       const h = Math.max(160, startH + (ev.clientY - startY));
+      if (axis === 'y') {
+        setSize((prev) => ({ ...prev, height: h }));
+        return;
+      }
+      const w = Math.max(260, Math.min(window.innerWidth - 24, startW + (ev.clientX - startX)));
       setSize({ width: w, height: h });
     };
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       document.body.classList.remove('preview-resizing');
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     document.body.classList.add('preview-resizing');
   };
+
+  const startResize = (e) => beginResize(e, 'both');
+  const startResizeY = (e) => beginResize(e, 'y');
 
   const startEdit = () => {
     setDraft(content);
@@ -126,9 +135,15 @@ function NodePreview({ node, left, top, onClose, onChanged, onOpenSidePanel, rea
         </div>
         <button
           className="node-preview-resize"
-          onMouseDown={startResize}
+          onPointerDown={startResize}
           title="Drag to resize"
           aria-label="Drag to resize"
+        />
+        <button
+          className="node-preview-resize-bottom"
+          onPointerDown={startResizeY}
+          title="Drag to resize vertically"
+          aria-label="Drag to resize vertically"
         />
       </div>
     </div>
